@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package musicai.reasoning;
+
+// Reasoning service definition
+service ReasoningService {
+    // Analyze a musical piece
+    rpc Analyze(AnalyzeRequest) returns (AnalysisResponse);
+
+    // Perform hybrid reasoning
+    rpc Reason(ReasonRequest) returns (ReasoningResponse);
+
+    // Suggest improvements
+    rpc SuggestImprovements(SuggestRequest) returns (ReasoningResponse);
+
+    // Validate music theory
+    rpc ValidateTheory(ValidateRequest) returns (ReasoningResponse);
+
+    // Explain a concept
+    rpc ExplainConcept(ConceptRequest) returns (ExplanationResponse);
+
+    // Health check
+    rpc HealthCheck(HealthRequest) returns (HealthResponse);
+}
+
+// Messages
+
+message AnalyzeRequest {
+    bytes music_data = 1;
+    string format = 2;  // musicxml, midi, abc
+}
+
+message AnalysisResponse {
+    string metadata_json = 1;
+    string key_analysis_json = 2;
+    string harmonic_analysis_json = 3;
+    string melodic_analysis_json = 4;
+    string validation_json = 5;
+}
+
+message ReasonRequest {
+    bytes music_data = 1;
+    string query = 2;
+    string mode = 3;  // symbolic_only, neural_only, hybrid, adaptive
+    string format = 4;
+}
+
+message ReasoningResponse {
+    string query = 1;
+    string mode = 2;
+    string synthesis = 3;
+    float confidence = 4;
+    repeated string recommendations = 5;
+    string symbolic_analysis_json = 6;
+    string neural_reasoning_json = 7;
+}
+
+message SuggestRequest {
+    bytes music_data = 1;
+    repeated string focus_areas = 2;
+    string format = 3;
+}
+
+message ValidateRequest {
+    bytes music_data = 1;
+    repeated string rules = 2;
+    bool explain = 3;
+    string format = 4;
+}
+
+message ConceptRequest {
+    string concept = 1;
+    string context_json = 2;
+    string level = 3;  // beginner, intermediate, advanced
+}
+
+message ExplanationResponse {
+    string concept = 1;
+    string explanation = 2;
+    string level = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+    string status = 1;
+    string service = 2;
+    string version = 3;
+    map<string, bool> components = 4;
+}

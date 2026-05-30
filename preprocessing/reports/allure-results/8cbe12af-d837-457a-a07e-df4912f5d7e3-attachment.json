@@ -1,0 +1,22 @@
+{
+  "notes": [
+    {
+      "pitch": 60,
+      "start_time": 0.0,
+      "duration": 0.5,
+      "velocity": 64
+    },
+    {
+      "pitch": 64,
+      "start_time": 0.5,
+      "duration": 0.5,
+      "velocity": 64
+    },
+    {
+      "pitch": 67,
+      "start_time": 1.0,
+      "duration": 0.5,
+      "velocity": 64
+    }
+  ]
+}

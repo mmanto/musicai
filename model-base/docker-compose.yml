@@ -1,0 +1,48 @@
+services:
+  model-base:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: musicai/model-base:latest
+    container_name: musicai-model-base
+    env_file: ../.env
+    ports:
+      - "8002:8002"    # REST API
+      - "50052:50052"  # gRPC
+    environment:
+      - SERVICE_NAME=model-base
+      - PREPROCESSING_GRPC=preprocessing:50051
+      - KNOWLEDGE_GRAPH_GRPC=knowledge-graph:50053
+      - REASONING_GRPC=reasoning:50054
+      - CHECKPOINT_DIR=/app/checkpoints
+      - DEVICE=cpu
+      - USE_FP16=false
+      # Model config (smaller for CPU)
+      - D_MODEL=256
+      - N_HEADS=4
+      - N_LAYERS=4
+      - D_FF=1024
+      - MAX_SEQ_LENGTH=1024
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./src:/app/src:ro
+      # GPU support - uncomment after installing nvidia-container-toolkit
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+networks:
+  default:
+    name: musicai-network
+    external: true

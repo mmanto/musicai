@@ -1,0 +1,22 @@
+{
+  "tokens": [
+    "create",
+    "a",
+    "jazz",
+    "progression",
+    "in",
+    "c",
+    "major"
+  ],
+  "num_tokens": 7,
+  "features": {
+    "key": "A",
+    "mode": "major",
+    "genre": "jazz",
+    "tempo_range": null,
+    "chord_mentions": [
+      "C"
+    ],
+    "instruments": []
+  }
+}

@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  rlhf:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: musicai-rlhf
+    env_file: ../.env
+    ports:
+      - "8005:8005"  # REST API
+      - "50055:50055"  # gRPC
+    environment:
+      # Service config
+      SERVICE_NAME: rlhf
+      SERVICE_VERSION: "0.1.0"
+      REST_HOST: 0.0.0.0
+      REST_PORT: 8005
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: 50055
+
+      # External Services
+      MODEL_BASE_URL: http://model-base:8002
+      PREPROCESSING_URL: http://preprocessing:8001
+      REASONING_URL: http://reasoning:8004
+
+      # Reward Model
+      REWARD_MODEL_PATH: /app/models/reward_model
+      REWARD_MODEL_TYPE: pairwise
+      REWARD_BATCH_SIZE: 16
+      REWARD_MAX_LENGTH: 2048
+
+      # Training
+      TRAINING_ALGORITHM: ppo
+      LEARNING_RATE: 0.00001
+      BATCH_SIZE: 8
+      GRADIENT_ACCUMULATION_STEPS: 4
+      MAX_STEPS: 10000
+      SAVE_STEPS: 500
+      EVAL_STEPS: 100
+      WARMUP_STEPS: 100
+
+      # PPO
+      PPO_EPOCHS: 4
+      PPO_CLIP_RANGE: 0.2
+      PPO_VALUE_COEF: 0.1
+      PPO_ENTROPY_COEF: 0.01
+
+      # DPO
+      DPO_BETA: 0.1
+      DPO_REFERENCE_FREE: "false"
+
+      # Evaluation
+      EVAL_BATCH_SIZE: 4
+      HUMAN_EVAL_ENABLED: "true"
+      HUMAN_EVAL_SAMPLE_RATE: 0.1
+
+      # Experiment Tracking
+      MLFLOW_TRACKING_URI: http://localhost:5000
+      MLFLOW_EXPERIMENT_NAME: musicai-rlhf
+      USE_TENSORBOARD: "true"
+      TENSORBOARD_LOG_DIR: /app/runs
+
+      # RabbitMQ
+      QUEUE_RLHF_TRAIN: rlhf.train
+      QUEUE_RLHF_EVAL: rlhf.eval
+      QUEUE_RLHF_FEEDBACK: rlhf.feedback
+      EXCHANGE_RLHF: musicai.rlhf
+
+      # Active Learning
+      ACTIVE_LEARNING_ENABLED: "true"
+      UNCERTAINTY_THRESHOLD: 0.7
+      DIVERSITY_SAMPLING: "true"
+
+      # Data
+      TRAINING_DATA_PATH: /app/data/training
+      FEEDBACK_DATA_PATH: /app/data/feedback
+      CHECKPOINT_DIR: /app/models/checkpoints
+
+      # Processing
+      MAX_WORKERS: 4
+      GPU_ENABLED: "false"
+      MIXED_PRECISION: fp16
+
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./runs:/app/runs
+    networks:
+      - musicai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  musicai-network:
+    external: true

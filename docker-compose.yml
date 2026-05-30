@@ -1,0 +1,488 @@
+# MusicAI - Unified Docker Compose Stack
+# This file orchestrates all MusicAI services in a single stack
+#
+# Variables de entorno centralizadas en: .env
+# Cada servicio carga estas variables usando: env_file: .env
+#
+# Services:
+#   - Infrastructure: rabbitmq, redis, neo4j, ollama
+#   - Microservices: preprocessing, model-base, knowledge-graph, reasoning, rlhf
+#   - Chat Application: musicai-backend, musicai-frontend
+#
+# Usage:
+#   docker compose up -d                    # Start all services
+#   docker compose up -d --build            # Build and start
+#   docker compose logs -f                  # View logs
+#   docker compose down                     # Stop all services
+#   docker compose down -v                  # Stop and remove volumes
+
+services:
+  # ============================================================================
+  # INFRASTRUCTURE SERVICES
+  # ============================================================================
+
+  # Message Broker
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: musicai-rabbitmq
+    env_file: .env
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - musicai-network
+
+  # Cache
+  redis:
+    image: redis:7-alpine
+    container_name: musicai-redis
+    env_file: .env
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - musicai-network
+
+  # Graph Database
+  neo4j:
+    image: neo4j:5-community
+    container_name: musicai-neo4j
+    ports:
+      - "7474:7474"   # HTTP
+      - "7687:7687"   # Bolt
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - musicai-network
+
+  # LLM Service
+  # NOTE: If Ollama is already running on the host, comment out this service
+  # and update OLLAMA_BASE_URL to http://host.docker.internal:11434 in dependent services
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: musicai-ollama
+  #   profiles:
+  #     - ollama  # Only starts with: docker compose --profile ollama up -d
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   restart: unless-stopped
+  #   entrypoint: ["/bin/sh", "-c"]
+  #   command:
+  #     - |
+  #       ollama serve &
+  #       sleep 10
+  #       ollama pull llama3.1:8b
+  #       wait
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 120s
+  #   networks:
+  #     - musicai-network
+
+  # ============================================================================
+  # MICROSERVICES
+  # ============================================================================
+
+  # Preprocessing Service - Audio/MIDI tokenization, feature extraction
+  preprocessing:
+    build:
+      context: ./preprocessing
+      dockerfile: Dockerfile
+    image: musicai/preprocessing:latest
+    container_name: musicai-preprocessing
+    env_file: .env
+    ports:
+      - "8001:8001"     # REST API
+      - "50051:50051"   # gRPC
+    environment:
+      SERVICE_NAME: preprocessing
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      REDIS_URL: redis://redis:6379/0
+      MODEL_BASE_GRPC: model-base:50052
+      KNOWLEDGE_GRAPH_GRPC: knowledge-graph:50053
+      REASONING_GRPC: reasoning:50054
+      AUDIO_CACHE_DIR: /app/cache
+    volumes:
+      - preprocessing_cache:/app/cache
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - musicai-network
+
+  # Model Base Service - Music Transformer for generation
+  model-base:
+    build:
+      context: ./model-base
+      dockerfile: Dockerfile
+    image: musicai/model-base:latest
+    container_name: musicai-model-base
+    env_file: .env
+    ports:
+      - "8002:8002"     # REST API
+      - "50052:50052"   # gRPC
+    environment:
+      SERVICE_NAME: model-base
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      REDIS_URL: redis://redis:6379/0
+      PREPROCESSING_GRPC: preprocessing:50051
+      KNOWLEDGE_GRAPH_GRPC: knowledge-graph:50053
+      REASONING_GRPC: reasoning:50054
+      CHECKPOINT_DIR: /app/checkpoints
+      DEVICE: cpu
+      USE_FP16: "false"
+      # Model config (smaller for CPU)
+      D_MODEL: "256"
+      N_HEADS: "4"
+      N_LAYERS: "4"
+      D_FF: "1024"
+      MAX_SEQ_LENGTH: "1024"
+    volumes:
+      - model_base_checkpoints:/app/checkpoints
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      preprocessing:
+        condition: service_healthy
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - musicai-network
+
+  # Knowledge Graph Service - Musical ontology + GNN
+  knowledge-graph:
+    build:
+      context: ./knowledge-graph
+      dockerfile: Dockerfile
+    image: musicai/knowledge-graph:latest
+    container_name: musicai-knowledge-graph
+    env_file: .env
+    ports:
+      - "8003:8003"     # REST API
+      - "50053:50053"   # gRPC
+    environment:
+      SERVICE_NAME: knowledge-graph
+      SERVICE_VERSION: "0.1.0"
+      REST_HOST: 0.0.0.0
+      REST_PORT: "8003"
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: "50053"
+      # Neo4j
+      NEO4J_URI: ${NEO4J_URI}
+      NEO4J_USER: ${NEO4J_USER}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      # RabbitMQ
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: "${RABBITMQ_PORT}"
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST}
+      # GNN
+      GNN_EMBEDDING_DIM: "256"
+      GNN_HIDDEN_DIM: "512"
+      GNN_NUM_LAYERS: "3"
+      GNN_DROPOUT: "0.1"
+      GNN_MODEL_PATH: ./models/gnn_model.pt
+    volumes:
+      - knowledge_graph_models:/app/models
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - musicai-network
+
+  # Reasoning Service - Hybrid symbolic + neural reasoning
+  reasoning:
+    build:
+      context: ./reasoning
+      dockerfile: Dockerfile
+    image: musicai/reasoning:latest
+    container_name: musicai-reasoning
+    env_file: .env
+    ports:
+      - "8004:8004"     # REST API
+      - "50054:50054"   # gRPC
+    environment:
+      # Service config
+      SERVICE_NAME: reasoning
+      SERVICE_VERSION: "0.1.0"
+      REST_HOST: 0.0.0.0
+      REST_PORT: "8004"
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: "50054"
+      # Ollama LLM (uses host Ollama if running, otherwise use docker ollama profile)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      OLLAMA_TEMPERATURE: "${OLLAMA_TEMPERATURE}"
+      OLLAMA_MAX_TOKENS: "${OLLAMA_MAX_TOKENS}"
+      OLLAMA_TIMEOUT: "${OLLAMA_TIMEOUT}"
+      # Knowledge Graph
+      KNOWLEDGE_GRAPH_URL: http://knowledge-graph:8003
+      KNOWLEDGE_GRAPH_GRPC: knowledge-graph:50053
+      # RabbitMQ
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: "${RABBITMQ_PORT}"
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST}
+      # Chain of Thought
+      COT_MAX_STEPS: "5"
+      COT_TEMPERATURE: "0.3"
+      COT_USE_EXAMPLES: "true"
+      # Music21
+      MUSIC21_CACHE_DIR: /app/cache/music21
+      MUSIC21_USE_LILYPOND: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - reasoning_cache:/app/cache
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - musicai-network
+
+  # RLHF Service - Reinforcement Learning from Human Feedback
+  rlhf:
+    build:
+      context: ./rlhf
+      dockerfile: Dockerfile
+    image: musicai/rlhf:latest
+    container_name: musicai-rlhf
+    env_file: .env
+    ports:
+      - "8005:8005"     # REST API
+      - "50055:50055"   # gRPC
+    environment:
+      # Service config
+      SERVICE_NAME: rlhf
+      SERVICE_VERSION: "0.1.0"
+      REST_HOST: 0.0.0.0
+      REST_PORT: "8005"
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: "50055"
+      # External Services
+      MODEL_BASE_URL: http://model-base:8002
+      PREPROCESSING_URL: http://preprocessing:8001
+      REASONING_URL: http://reasoning:8004
+      # RabbitMQ
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: "${RABBITMQ_PORT}"
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST}
+    volumes:
+      - rlhf_data:/app/data
+      - rlhf_models:/app/models
+      - rlhf_runs:/app/runs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      model-base:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - musicai-network
+
+  # ============================================================================
+  # CHAT APPLICATION
+  # ============================================================================
+
+  # Backend API - FastAPI with MusicGen, ChromaDB
+  musicai-backend:
+    build:
+      context: ./musicai-backend
+      dockerfile: Dockerfile
+    image: musicai/chat-backend:latest
+    container_name: musicai-chat-backend
+    env_file: .env
+    ports:
+      - "8000:8000"
+    environment:
+      # Ollama connection (uses host Ollama)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      # ChromaDB persistence
+      CHROMA_PERSIST_DIRECTORY: /app/chromadb_data
+      # Application settings
+      PYTHONUNBUFFERED: "1"
+      LOG_LEVEL: info
+      # Microservices connections (optional integration)
+      REASONING_SERVICE_URL: http://reasoning:8004
+      PREPROCESSING_SERVICE_URL: http://preprocessing:8001
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - chat_storage:/app/storage
+      - chat_chromadb:/app/chromadb_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - musicai-network
+
+  # Frontend - React + TypeScript Chat Interface
+  musicai-frontend:
+    build:
+      context: ./musicai-frontend
+      dockerfile: Dockerfile
+      target: development
+    image: musicai/chat-frontend:latest
+    container_name: musicai-chat-frontend
+    env_file: .env
+    ports:
+      - "5173:5173"
+    environment:
+      # Backend API (for music generation)
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+      # Reasoning Service (for educational chat)
+      VITE_REASONING_API_URL: ${VITE_REASONING_API_URL}
+      # Enable reasoning service
+      VITE_USE_REASONING_SERVICE: "${VITE_USE_REASONING_SERVICE}"
+      NODE_ENV: development
+    volumes:
+      # Hot reload for development
+      - ./musicai-frontend/src:/app/src
+      - ./musicai-frontend/public:/app/public
+      - ./musicai-frontend/index.html:/app/index.html
+      - ./musicai-frontend/vite.config.ts:/app/vite.config.ts
+      - ./musicai-frontend/tsconfig.json:/app/tsconfig.json
+      - ./musicai-frontend/package.json:/app/package.json
+      # Exclude node_modules
+      - /app/node_modules
+    depends_on:
+      musicai-backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - musicai-network
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  musicai-network:
+    driver: bridge
+    name: musicai-network
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  # Infrastructure
+  rabbitmq_data:
+    driver: local
+  redis_data:
+    driver: local
+  neo4j_data:
+    driver: local
+  neo4j_logs:
+    driver: local
+  ollama_data:
+    driver: local
+
+  # Microservices
+  preprocessing_cache:
+    driver: local
+  model_base_checkpoints:
+    driver: local
+  knowledge_graph_models:
+    driver: local
+  reasoning_cache:
+    driver: local
+  rlhf_data:
+    driver: local
+  rlhf_models:
+    driver: local
+  rlhf_runs:
+    driver: local
+
+  # Chat Application
+  chat_storage:
+    driver: local
+  chat_chromadb:
+    driver: local

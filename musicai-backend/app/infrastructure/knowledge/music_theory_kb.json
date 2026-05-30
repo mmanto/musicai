@@ -1,0 +1,199 @@
+{
+  "version": "1.0",
+  "description": "Base de conocimiento de teoría musical para RAG",
+  "concepts": [
+    {
+      "title": "Escala Mayor",
+      "category": "scales",
+      "difficulty": "beginner",
+      "description": "La escala mayor es una de las escalas más fundamentales en la música occidental. Está formada por 7 notas con el patrón de intervalos: Tono-Tono-Semitono-Tono-Tono-Tono-Semitono (W-W-H-W-W-W-H). La primera nota se llama tónica y le da nombre a la escala. Por ejemplo, la escala de Do mayor contiene las notas: Do, Re, Mi, Fa, Sol, La, Si.",
+      "examples": [
+        "Do mayor: C-D-E-F-G-A-B",
+        "Sol mayor: G-A-B-C-D-E-F#",
+        "Re mayor: D-E-F#-G-A-B-C#"
+      ],
+      "related_concepts": ["tónica", "intervalos", "escala menor", "modos gregorianos"]
+    },
+    {
+      "title": "Escala Menor Natural",
+      "category": "scales",
+      "difficulty": "beginner",
+      "description": "La escala menor natural (también llamada escala menor antigua o eólica) tiene un sonido más oscuro y melancólico que la escala mayor. Su patrón de intervalos es: Tono-Semitono-Tono-Tono-Semitono-Tono-Tono (W-H-W-W-H-W-W). Por ejemplo, la escala de La menor natural contiene: La, Si, Do, Re, Mi, Fa, Sol. Es la relativa menor de Do mayor.",
+      "examples": [
+        "La menor: A-B-C-D-E-F-G",
+        "Mi menor: E-F#-G-A-B-C-D",
+        "Re menor: D-E-F-G-A-Bb-C"
+      ],
+      "related_concepts": ["escala mayor", "escala menor armónica", "escala menor melódica", "relativa menor"]
+    },
+    {
+      "title": "Escala Pentatónica Mayor",
+      "category": "scales",
+      "difficulty": "beginner",
+      "description": "La escala pentatónica mayor consta de 5 notas (penta = cinco) derivadas de la escala mayor, eliminando el 4to y 7mo grado. Es muy utilizada en música popular, blues, rock y música tradicional de muchas culturas. Su sonido es muy consonante ya que evita los semitonos. Por ejemplo, Do pentatónico mayor: Do, Re, Mi, Sol, La.",
+      "examples": [
+        "Do pentatónico mayor: C-D-E-G-A",
+        "Sol pentatónico mayor: G-A-B-D-E",
+        "La pentatónico mayor: A-B-C#-E-F#"
+      ],
+      "related_concepts": ["escala mayor", "pentatónica menor", "blues", "improvisación"]
+    },
+    {
+      "title": "Escala Pentatónica Menor",
+      "category": "scales",
+      "difficulty": "beginner",
+      "description": "La escala pentatónica menor tiene 5 notas derivadas de la escala menor natural, eliminando el 2do y 6to grado. Es extremadamente popular en blues, rock y jazz. Tiene un sonido más oscuro que la pentatónica mayor. La pentatónica de La menor contiene: La, Do, Re, Mi, Sol. La tónica (primera nota) siempre da nombre a la escala.",
+      "examples": [
+        "La pentatónico menor: A-C-D-E-G",
+        "Mi pentatónico menor: E-G-A-B-D",
+        "Re pentatónico menor: D-F-G-A-C"
+      ],
+      "related_concepts": ["escala menor", "pentatónica mayor", "blues", "rock"]
+    },
+    {
+      "title": "Tónica",
+      "category": "theory",
+      "difficulty": "beginner",
+      "description": "La tónica es la primera nota de una escala y el punto de reposo tonal. Es la nota más estable y le da el nombre a la escala o tonalidad. Por ejemplo, en la escala de Do mayor, Do es la tónica. En La menor, La es la tónica. La música tiende a resolver hacia la tónica, creando sensación de conclusión. Una escala SIEMPRE comienza con su tónica.",
+      "examples": [
+        "En Do mayor, la tónica es Do (C)",
+        "En La menor, la tónica es La (A)",
+        "En Sol pentatónico, la tónica es Sol (G)"
+      ],
+      "related_concepts": ["escala", "tonalidad", "resolución", "centro tonal"]
+    },
+    {
+      "title": "Acorde Mayor",
+      "category": "chords",
+      "difficulty": "beginner",
+      "description": "Un acorde mayor está formado por tres notas: la fundamental (raíz), la tercera mayor y la quinta justa. El intervalo entre la fundamental y la tercera es de 4 semitonos (tercera mayor), y entre la tercera y la quinta es de 3 semitonos (tercera menor). Tiene un sonido brillante y alegre. Por ejemplo, Do mayor (C) contiene: Do, Mi, Sol.",
+      "examples": [
+        "Do mayor: C-E-G",
+        "Sol mayor: G-B-D",
+        "La mayor: A-C#-E"
+      ],
+      "related_concepts": ["acorde menor", "triada", "tercera mayor", "quinta justa"]
+    },
+    {
+      "title": "Acorde Menor",
+      "category": "chords",
+      "difficulty": "beginner",
+      "description": "Un acorde menor está formado por tres notas: la fundamental, la tercera menor y la quinta justa. El intervalo entre la fundamental y la tercera es de 3 semitonos (tercera menor), y entre la tercera y la quinta es de 4 semitonos (tercera mayor). Tiene un sonido más oscuro y melancólico. Por ejemplo, La menor (Am) contiene: La, Do, Mi.",
+      "examples": [
+        "La menor: A-C-E",
+        "Mi menor: E-G-B",
+        "Re menor: D-F-A"
+      ],
+      "related_concepts": ["acorde mayor", "triada", "tercera menor", "quinta justa"]
+    },
+    {
+      "title": "Intervalos",
+      "category": "theory",
+      "difficulty": "intermediate",
+      "description": "Un intervalo es la distancia entre dos notas. Se miden en semitonos (la distancia más pequeña en el sistema temperado occidental). Los intervalos se clasifican por su tamaño (segunda, tercera, cuarta, etc.) y su cualidad (mayor, menor, justa, aumentada, disminuida). Por ejemplo, de Do a Mi hay 4 semitonos = tercera mayor. De Do a Mi bemol hay 3 semitonos = tercera menor.",
+      "examples": [
+        "Semitono: C a C# (1 semitono)",
+        "Tercera mayor: C a E (4 semitonos)",
+        "Quinta justa: C a G (7 semitonos)",
+        "Octava: C a C (12 semitonos)"
+      ],
+      "related_concepts": ["escala", "acorde", "armonía", "melodía"]
+    },
+    {
+      "title": "Círculo de Quintas",
+      "category": "theory",
+      "difficulty": "intermediate",
+      "description": "El círculo de quintas es un diagrama que muestra la relación entre las 12 tonalidades. Moviéndose en sentido horario, cada tonalidad está una quinta justa (7 semitonos) por encima de la anterior. Es útil para entender armaduras, modulaciones y progresiones armónicas. Por ejemplo: C → G → D → A → E → B → F# → C#/Db → Ab → Eb → Bb → F → C.",
+      "examples": [
+        "Do mayor (0 alteraciones) → Sol mayor (1 sostenido)",
+        "La menor (0 alteraciones) → Mi menor (1 sostenido)",
+        "Progresión típica: C-Am-F-G (usa notas del círculo)"
+      ],
+      "related_concepts": ["tonalidad", "armadura", "modulación", "quinta justa"]
+    },
+    {
+      "title": "Modos Gregorianos",
+      "category": "scales",
+      "difficulty": "advanced",
+      "description": "Los modos gregorianos son 7 escalas derivadas de la escala mayor, cada una comenzando en un grado diferente. Tienen sonoridades únicas: Jónico (mayor), Dórico (menor con 6ta mayor), Frigio (menor con 2da menor), Lidio (mayor con 4ta aumentada), Mixolidio (mayor con 7ma menor), Eólico (menor natural), Locrio (disminuido). Muy usados en jazz, música modal y composición contemporánea.",
+      "examples": [
+        "Dórico de Re: D-E-F-G-A-B-C (como Re menor con Si natural)",
+        "Frigio de Mi: E-F-G-A-B-C-D (como Mi menor con Fa natural)",
+        "Mixolidio de Sol: G-A-B-C-D-E-F (como Sol mayor con Fa natural)"
+      ],
+      "related_concepts": ["escala mayor", "escala menor", "música modal", "jazz"]
+    },
+    {
+      "title": "Acorde de Séptima",
+      "category": "chords",
+      "difficulty": "intermediate",
+      "description": "Los acordes de séptima añaden una cuarta nota a una triada: la séptima. Hay varios tipos: séptima mayor (maj7), séptima dominante (7), séptima menor (m7), séptima disminuida (dim7), y semidisminuida (m7b5). Cada uno tiene un color armónico distintivo. Por ejemplo, Cmaj7 = C-E-G-B, C7 = C-E-G-Bb.",
+      "examples": [
+        "Cmaj7: C-E-G-B (mayor con séptima mayor)",
+        "C7: C-E-G-Bb (mayor con séptima menor - dominante)",
+        "Cm7: C-Eb-G-Bb (menor con séptima menor)"
+      ],
+      "related_concepts": ["triada", "acorde mayor", "acorde menor", "función dominante"]
+    },
+    {
+      "title": "Progresión Armónica",
+      "category": "harmony",
+      "difficulty": "intermediate",
+      "description": "Una progresión armónica es una secuencia de acordes que crea movimiento y tensión/resolución en la música. Las progresiones más comunes usan los grados I-IV-V (tónica-subdominante-dominante). En Do mayor: C-F-G. Otras progresiones populares incluyen ii-V-I en jazz, y I-V-vi-IV en música pop moderna.",
+      "examples": [
+        "I-IV-V en Do: C-F-G",
+        "ii-V-I en Do: Dm-G-C (muy común en jazz)",
+        "I-V-vi-IV en Do: C-G-Am-F (pop moderno)",
+        "I-vi-IV-V en Do: C-Am-F-G (años 50-60)"
+      ],
+      "related_concepts": ["acordes", "tonalidad", "función armónica", "cadencia"]
+    },
+    {
+      "title": "Arpegio",
+      "category": "technique",
+      "difficulty": "beginner",
+      "description": "Un arpegio es tocar las notas de un acorde de forma sucesiva (una por una) en lugar de simultánea. Pueden ser ascendentes (de grave a agudo), descendentes (de agudo a grave), o en patrones más complejos. Son fundamentales para improvisación y composición. Por ejemplo, el arpegio de Do mayor ascendente: Do-Mi-Sol-Do.",
+      "examples": [
+        "Arpegio de Do mayor ascendente: C-E-G-C",
+        "Arpegio de La menor descendente: E-C-A-E",
+        "Arpegio de Sol7: G-B-D-F"
+      ],
+      "related_concepts": ["acorde", "melodía", "improvisación", "técnica instrumental"]
+    },
+    {
+      "title": "Escala Cromática",
+      "category": "scales",
+      "difficulty": "beginner",
+      "description": "La escala cromática incluye todas las 12 notas del sistema temperado occidental, separadas por semitonos. No tiene una tónica definida y no establece un centro tonal fuerte. Se usa para pasajes cromáticos, cromatismos, y como herramienta técnica. Desde Do: C-C#-D-D#-E-F-F#-G-G#-A-A#-B-C.",
+      "examples": [
+        "Cromática desde Do: C-C#-D-D#-E-F-F#-G-G#-A-A#-B",
+        "Cromática desde La: A-A#-B-C-C#-D-D#-E-F-F#-G-G#"
+      ],
+      "related_concepts": ["semitonos", "cromatismo", "modulación", "técnica"]
+    },
+    {
+      "title": "Escala Menor Armónica",
+      "category": "scales",
+      "difficulty": "intermediate",
+      "description": "La escala menor armónica es una variación de la escala menor natural donde se eleva el séptimo grado un semitono, creando un semitono aumentado entre el 6to y 7mo grado. Esto genera una sensación más dramática y se usa mucho en música clásica, flamenco y metal. Por ejemplo, La menor armónica: A-B-C-D-E-F-G#.",
+      "examples": [
+        "La menor armónica: A-B-C-D-E-F-G#",
+        "Mi menor armónica: E-F#-G-A-B-C-D#",
+        "Re menor armónica: D-E-F-G-A-Bb-C#"
+      ],
+      "related_concepts": ["escala menor natural", "escala menor melódica", "función dominante"]
+    },
+    {
+      "title": "Notación Musical",
+      "category": "notation",
+      "difficulty": "beginner",
+      "description": "La notación musical es el sistema de símbolos para representar la música en papel. Incluye el pentagrama (5 líneas), claves (sol, fa, do), figuras rítmicas (redonda, blanca, negra, corchea), alteraciones (sostenido #, bemol ♭, becuadro ♮), y dinámicas (forte f, piano p). Las notas se colocan en líneas y espacios para indicar su altura.",
+      "examples": [
+        "Clave de Sol: usada para registros agudos (piano mano derecha, violín)",
+        "Clave de Fa: usada para registros graves (piano mano izquierda, bajo)",
+        "Alteraciones: # sube semitono, ♭ baja semitono, ♮ cancela"
+      ],
+      "related_concepts": ["pentagrama", "claves", "figuras rítmicas", "alteraciones"]
+    }
+  ]
+}

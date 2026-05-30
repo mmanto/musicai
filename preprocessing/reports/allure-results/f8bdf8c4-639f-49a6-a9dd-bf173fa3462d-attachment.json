@@ -1,0 +1,5 @@
+{
+  "event_loop_policy": "_UnixDefaultEventLoopPolicy",
+  "client": "TestClient",
+  "sample_mp3_path": "/home/mmanto/Projects/agileteam-core/musicai/preprocessing/tests/data/Sombras dormidas.mp3"
+}

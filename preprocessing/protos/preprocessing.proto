@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package musicai.preprocessing;
+
+option python_generic_services = true;
+
+// Main preprocessing service
+service PreprocessingService {
+  // Tokenize audio file into BPE tokens
+  rpc TokenizeAudio(AudioRequest) returns (TokenResponse);
+
+  // Tokenize MIDI file into tokens
+  rpc TokenizeMidi(MidiRequest) returns (TokenResponse);
+
+  // Extract audio features (mel spectrogram, tempo, key, etc.)
+  rpc ExtractFeatures(AudioRequest) returns (FeaturesResponse);
+
+  // Convert audio to MIDI
+  rpc AudioToMidi(AudioRequest) returns (MidiResponse);
+
+  // Re-analyze a specific section (called by Reasoning module)
+  rpc ReanalyzeSection(ReanalyzeRequest) returns (TokenResponse);
+
+  // Health check
+  rpc HealthCheck(Empty) returns (HealthResponse);
+}
+
+// Empty message for health check
+message Empty {}
+
+// Health check response
+message HealthResponse {
+  bool healthy = 1;
+  string version = 2;
+  string service_name = 3;
+}
+
+// Audio input request
+message AudioRequest {
+  bytes audio_data = 1;
+  string format = 2;              // wav, mp3, flac
+  int32 sample_rate = 3;          // Optional, default 22050
+  map<string, string> options = 4; // Additional processing options
+}
+
+// MIDI input request
+message MidiRequest {
+  bytes midi_data = 1;
+  map<string, string> options = 2;
+}
+
+// Token response
+message TokenResponse {
+  repeated int32 tokens = 1;           // BPE token IDs
+  repeated float embeddings = 2;       // Initial embeddings (flattened)
+  int32 embedding_dim = 3;             // Embedding dimension
+  map<string, float> features = 4;     // Extracted symbolic features
+  string request_id = 5;               // For tracking
+}
+
+// Features response
+message FeaturesResponse {
+  // Spectral features
+  repeated float mel_spectrogram = 1;   // Flattened mel spectrogram
+  int32 n_mels = 2;
+  int32 n_frames = 3;
+
+  // Symbolic features
+  float tempo = 4;                      // BPM
+  string key = 5;                       // e.g., "C major", "A minor"
+  string time_signature = 6;            // e.g., "4/4"
+  repeated string chord_progression = 7; // Detected chords
+
+  // Additional features
+  float duration = 8;                   // Duration in seconds
+  map<string, float> extra_features = 9; // Additional extracted features
+
+  string request_id = 10;
+}
+
+// MIDI response
+message MidiResponse {
+  bytes midi_data = 1;                  // MIDI file bytes
+  repeated Note notes = 2;              // Extracted notes
+  float confidence = 3;                 // Conversion confidence score
+  string request_id = 4;
+}
+
+// Note representation
+message Note {
+  int32 pitch = 1;                      // MIDI pitch (0-127)
+  float start_time = 2;                 // Start time in seconds
+  float duration = 3;                   // Duration in seconds
+  int32 velocity = 4;                   // MIDI velocity (0-127)
+}
+
+// Request to re-analyze a section (from Reasoning module)
+message ReanalyzeRequest {
+  bytes audio_data = 1;
+  float start_time = 2;                 // Section start in seconds
+  float end_time = 3;                   // Section end in seconds
+  repeated string focus_features = 4;   // Features to focus on (e.g., "chromatic_modulations")
+  map<string, string> options = 5;
+}
+
+// Event message for RabbitMQ communication
+message PreprocessingEvent {
+  string event_type = 1;                // TOKENIZATION_COMPLETE, FEATURES_EXTRACTED, etc.
+  string request_id = 2;
+  bytes payload = 3;                    // Serialized response
+  int64 timestamp = 4;
+  string source_module = 5;
+  string target_module = 6;
+}

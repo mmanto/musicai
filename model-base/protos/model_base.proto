@@ -1,0 +1,118 @@
+syntax = "proto3";
+
+package musicai.modelbase;
+
+option python_generic_services = true;
+
+// Main model base service
+service ModelBaseService {
+  // Generate music from tokens
+  rpc Generate(GenerateRequest) returns (GenerateResponse);
+
+  // Generate with streaming output
+  rpc GenerateStream(GenerateRequest) returns (stream TokenChunk);
+
+  // Get model embeddings for tokens
+  rpc GetEmbeddings(EmbeddingsRequest) returns (EmbeddingsResponse);
+
+  // Continue/complete a musical sequence
+  rpc Continue(ContinueRequest) returns (GenerateResponse);
+
+  // Query knowledge graph concepts during generation
+  rpc QueryConcept(ConceptQuery) returns (ConceptResponse);
+
+  // Health check
+  rpc HealthCheck(Empty) returns (HealthResponse);
+}
+
+// Empty message
+message Empty {}
+
+// Health check response
+message HealthResponse {
+  bool healthy = 1;
+  string version = 2;
+  string service_name = 3;
+  bool model_loaded = 4;
+  string device = 5;
+}
+
+// Generation request
+message GenerateRequest {
+  repeated int32 input_tokens = 1;      // Input token sequence
+  int32 max_length = 2;                 // Maximum generation length
+  float temperature = 3;                // Sampling temperature
+  int32 top_k = 4;                      // Top-k sampling
+  float top_p = 5;                      // Nucleus sampling
+  map<string, string> context = 6;      // Additional context (key, tempo, etc.)
+  string request_id = 7;
+}
+
+// Generation response
+message GenerateResponse {
+  repeated int32 generated_tokens = 1;  // Generated token sequence
+  repeated float attention_weights = 2; // Attention weights (flattened)
+  int32 num_layers = 3;                 // Number of attention layers
+  map<string, float> metadata = 4;      // Generation metadata
+  string request_id = 5;
+}
+
+// Streaming token chunk
+message TokenChunk {
+  int32 token = 1;
+  float probability = 2;
+  bool is_end = 3;
+  string request_id = 4;
+}
+
+// Embeddings request
+message EmbeddingsRequest {
+  repeated int32 tokens = 1;
+  int32 layer = 2;                      // Which layer to extract from (-1 for last)
+  string request_id = 3;
+}
+
+// Embeddings response
+message EmbeddingsResponse {
+  repeated float embeddings = 1;        // Flattened embeddings
+  int32 seq_length = 2;
+  int32 hidden_dim = 3;
+  string request_id = 4;
+}
+
+// Continue request
+message ContinueRequest {
+  repeated int32 input_tokens = 1;
+  int32 continuation_length = 2;
+  float temperature = 3;
+  int32 top_k = 4;
+  float top_p = 5;
+  string style_hint = 6;                // e.g., "jazz", "classical"
+  string request_id = 7;
+}
+
+// Concept query (to knowledge graph)
+message ConceptQuery {
+  string concept = 1;                   // e.g., "tritone_substitution"
+  string current_key = 2;
+  repeated string current_chords = 3;
+  string request_id = 4;
+}
+
+// Concept response
+message ConceptResponse {
+  repeated float concept_embedding = 1;
+  repeated string related_concepts = 2;
+  map<string, string> constraints = 3;  // e.g., "valid_chords": "Db7,Ab7"
+  string request_id = 4;
+}
+
+// Event for RabbitMQ
+message ModelEvent {
+  string event_type = 1;
+  string request_id = 2;
+  bytes payload = 3;
+  int64 timestamp = 4;
+  string source_module = 5;
+  string target_module = 6;
+}

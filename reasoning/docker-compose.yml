@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  reasoning:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: musicai-reasoning
+    env_file: ../.env
+    ports:
+      - "8004:8004"  # REST API
+      - "50054:50054"  # gRPC
+    environment:
+      # Service config
+      SERVICE_NAME: reasoning
+      SERVICE_VERSION: "0.1.0"
+      REST_HOST: 0.0.0.0
+      REST_PORT: 8004
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: 50054
+
+      # Ollama LLM (desde .env centralizado)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      OLLAMA_TEMPERATURE: ${OLLAMA_TEMPERATURE}
+      OLLAMA_MAX_TOKENS: ${OLLAMA_MAX_TOKENS}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT}
+
+      # Knowledge Graph
+      KNOWLEDGE_GRAPH_URL: http://knowledge-graph:8003
+      KNOWLEDGE_GRAPH_GRPC: knowledge-graph:50053
+
+      # RabbitMQ Queues
+      QUEUE_REASONING_GENERATED: reasoning.generated
+      QUEUE_REASONING_VALIDATE: reasoning.validate
+      QUEUE_REASONING_RESPONSE: reasoning.response
+      EXCHANGE_REASONING: musicai.reasoning
+
+      # Chain of Thought
+      COT_MAX_STEPS: 5
+      COT_TEMPERATURE: 0.3
+      COT_USE_EXAMPLES: "true"
+
+      # Music21
+      MUSIC21_CACHE_DIR: /app/cache/music21
+      MUSIC21_USE_LILYPOND: "false"
+
+      # Processing
+      BATCH_SIZE: 16
+      MAX_WORKERS: 4
+
+    volumes:
+      - ./cache:/app/cache
+      - ./prompts:/app/prompts
+    networks:
+      - musicai-network
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: musicai-ollama
+    env_file: ../.env
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - musicai-network
+    restart: unless-stopped
+    # Pull models after startup using environment variable
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        sleep 10
+        ollama pull ${OLLAMA_MODEL}
+        wait
+
+networks:
+  musicai-network:
+    external: true
+
+volumes:
+  ollama-data:
+    driver: local

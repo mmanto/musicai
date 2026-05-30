@@ -1,0 +1,77 @@
+/* InlineNotation Styles */
+
+.inline-notation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin: 2px 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+  max-width: 300px;
+  overflow: hidden;
+}
+
+.inline-notation:hover {
+  background: var(--secondary);
+  border-color: var(--ring);
+}
+
+.inline-notation-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inline-notation-container svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Fallback text style when notation fails */
+.inline-notation-fallback {
+  display: inline-block;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 500;
+  margin: 0 2px;
+  cursor: pointer;
+}
+
+.inline-notation-fallback:hover {
+  opacity: 0.9;
+}
+
+/* MusicAwareText container */
+.music-aware-text {
+  display: inline;
+  line-height: 1.8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .inline-notation {
+    max-width: 200px;
+    padding: 2px 4px;
+  }
+}
+
+/* Always keep white background for music notation readability */
+.inline-notation-container svg path,
+.inline-notation-container svg text {
+  fill: #000000 !important;
+}
+
+.inline-notation-container svg line,
+.inline-notation-container svg rect {
+  stroke: #000000 !important;
+}

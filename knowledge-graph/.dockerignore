@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.cover
+coverage.xml
+pytest.ini
+.coveragerc
+
+# Documentation
+docs/
+*.md
+*.odt
+*.pdf
+*.docx
+# Allow requirements files
+!requirements*.txt
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Logs
+*.log
+logs/
+
+# Cache
+cache/
+*.cache
+
+# Environment files
+.env
+.env.local
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Models
+models/*.pt
+models/*.pth
+data/
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Makefile
+Makefile

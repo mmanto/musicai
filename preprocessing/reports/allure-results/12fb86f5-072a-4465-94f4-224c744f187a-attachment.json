@@ -1,0 +1,4 @@
+{
+  "event_loop_policy": "_UnixDefaultEventLoopPolicy",
+  "midi_file_path": "/home/mmanto/Projects/agileteam-core/musicai/preprocessing/tests/data/Sombras dormidas.mid"
+}

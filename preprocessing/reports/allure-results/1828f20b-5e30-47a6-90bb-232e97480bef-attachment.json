@@ -1,0 +1,5 @@
+{
+  "event_loop_policy": "_UnixDefaultEventLoopPolicy",
+  "real_audio_bytes_mp3": "<bytes: 6043637 bytes>",
+  "sample_mp3_file": "/home/mmanto/Projects/agileteam-core/musicai/preprocessing/tests/data/Sombras dormidas.mp3"
+}

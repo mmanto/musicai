@@ -1,0 +1,4 @@
+{
+  "event_loop_policy": "_UnixDefaultEventLoopPolicy",
+  "tokenizer": "BPETokenizer"
+}

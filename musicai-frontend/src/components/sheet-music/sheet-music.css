@@ -1,0 +1,511 @@
+/* Sheet Music Viewer Styles */
+
+.sheet-music-viewer {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 0.625rem);
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.sheet-music-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* Minimal controls variant */
+.sheet-music-controls-minimal {
+  justify-content: flex-end;
+  margin-bottom: 8px;
+  padding: 4px 0;
+}
+
+.control-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn-control,
+.btn-zoom {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+/* Minimal zoom buttons */
+.btn-zoom-minimal {
+  padding: 4px 10px;
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 32px;
+  border-radius: 4px;
+}
+
+.btn-control:hover:not(:disabled),
+.btn-zoom:hover:not(:disabled) {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.btn-control:disabled,
+.btn-zoom:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.zoom-level {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+  min-width: 50px;
+  text-align: center;
+}
+
+.zoom-level-minimal {
+  font-size: 12px;
+  min-width: 40px;
+  color: #666;
+}
+
+/* Playback Controls */
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mode-selector {
+  position: relative;
+}
+
+.btn-mode {
+  padding: 6px 10px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btn-mode:hover {
+  background: var(--accent);
+  border-color: var(--ring);
+}
+
+.mode-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px oklch(0 0 0 / 15%);
+  min-width: 180px;
+  z-index: 100;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.mode-dropdown .dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 13px;
+  color: var(--foreground);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.mode-dropdown .dropdown-item:hover:not(:disabled) {
+  background: var(--secondary);
+}
+
+.mode-dropdown .dropdown-item.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.mode-dropdown .dropdown-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mode-dropdown .dropdown-item:not(:last-child) {
+  border-bottom: 1px solid #eee;
+}
+
+.btn-transport {
+  padding: 6px 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+  min-width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--foreground);
+}
+
+.btn-transport:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.btn-transport:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-play-main {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.btn-play-main:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.zoom-controls {
+  margin-left: auto;
+}
+
+.sheet-music-container {
+  background: #ffffff !important;
+  padding: 20px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+/* Force OSMD SVG to have white background and black notes */
+.sheet-music-container svg {
+  background-color: #ffffff !important;
+}
+
+.sheet-music-container svg path,
+.sheet-music-container svg text {
+  fill: #000000 !important;
+}
+
+.sheet-music-container svg line,
+.sheet-music-container svg polyline {
+  stroke: #000000 !important;
+}
+
+.sheet-music-loading,
+.sheet-music-error {
+  text-align: center;
+  padding: 40px;
+  color: #666;
+}
+
+.sheet-music-error {
+  color: #e53e3e;
+}
+
+/* MIDI Synthesizer Styles */
+
+.midi-synthesizer {
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.synth-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn-synth {
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-synth:hover:not(:disabled) {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+.btn-synth:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tempo-control {
+  flex: 1;
+  min-width: 200px;
+}
+
+.tempo-control label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--foreground);
+}
+
+.tempo-slider {
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: #e2e8f0;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.tempo-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+}
+
+.tempo-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+  border: none;
+}
+
+.synth-status {
+  margin-top: 12px;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+
+.midi-synth-error {
+  color: #e53e3e;
+  text-align: center;
+  padding: 16px;
+}
+
+/* Responsive Design */
+
+@media (max-width: 768px) {
+  .sheet-music-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .control-group {
+    justify-content: space-between;
+  }
+
+  .btn-control,
+  .btn-zoom {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .synth-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tempo-control {
+    min-width: auto;
+  }
+}
+
+/* Sheet Music Editor Styles */
+
+.sheet-music-editor {
+  background: var(--secondary);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin: 16px 0;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--border);
+}
+
+.editor-header h3 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 20px;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-editor {
+  padding: 10px 20px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-editor:hover:not(:disabled) {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+
+.btn-editor:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.editor-canvas {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  min-height: 200px;
+  border: 1px solid var(--border);
+}
+
+.editor-canvas svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.editor-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.control-section {
+  background: var(--card);
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.control-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.control-section p {
+  margin: 0;
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.btn-control-small {
+  padding: 8px 12px;
+  margin: 4px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.btn-control-small:hover:not(:disabled) {
+  background: var(--secondary);
+  border-color: var(--ring);
+}
+
+.btn-control-small:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.editor-instructions {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 16px;
+  color: #856404;
+}
+
+.editor-instructions p {
+  margin: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.editor-instructions ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.editor-instructions li {
+  margin: 4px 0;
+}
+
+/* Dark mode — using .dark class (all colors already handled via CSS variables above) */
+
+/*
+ * ALWAYS keep sheet music with white background and black notation
+ * This is applied regardless of dark/light mode since music notation
+ * should always be readable as black on white
+ */
+.sheet-music-container {
+  background-color: #ffffff !important;
+}
+
+.sheet-music-container svg {
+  background-color: #ffffff !important;
+}
+
+.sheet-music-container svg path {
+  fill: #000000 !important;
+}
+
+.sheet-music-container svg text {
+  fill: #000000 !important;
+}
+
+.sheet-music-container svg line,
+.sheet-music-container svg polyline {
+  stroke: #000000 !important;
+}

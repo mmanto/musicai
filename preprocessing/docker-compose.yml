@@ -1,0 +1,77 @@
+services:
+  preprocessing:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: musicai/preprocessing:latest
+    container_name: musicai-preprocessing
+    env_file: ../.env
+    ports:
+      - "8001:8001"    # REST API
+      - "50051:50051"  # gRPC
+    environment:
+      - SERVICE_NAME=preprocessing
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379/0
+      - MODEL_BASE_GRPC=model-base:50052
+      - KNOWLEDGE_GRAPH_GRPC=knowledge-graph:50053
+      - REASONING_GRPC=reasoning:50054
+      - AUDIO_CACHE_DIR=/app/cache
+    volumes:
+      - ./audio_cache:/app/cache
+      - ./src:/app/src:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: musicai-rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: musicai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
+  redis_data:
+
+networks:
+  default:
+    name: musicai-network
+    external: true

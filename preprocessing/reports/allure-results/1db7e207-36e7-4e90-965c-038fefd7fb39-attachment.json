@@ -1,0 +1,9 @@
+{
+  "event_loop_policy": "_UnixDefaultEventLoopPolicy",
+  "real_audio_bytes_wav": "<bytes: 35844654 bytes>",
+  "real_audio_bytes_mp3": "<bytes: 6043637 bytes>",
+  "real_audio_bytes_flac": "<bytes: 14999896 bytes>",
+  "sample_wav_file": "/home/mmanto/Projects/agileteam-core/musicai/preprocessing/tests/data/Sombras dormidas.wav",
+  "sample_mp3_file": "/home/mmanto/Projects/agileteam-core/musicai/preprocessing/tests/data/Sombras dormidas.mp3",
+  "sample_flac_file": "/home/mmanto/Projects/agileteam-core/musicai/preprocessing/tests/data/Sombras dormidas.flac"
+}

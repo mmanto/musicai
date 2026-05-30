@@ -1,0 +1,32 @@
+# Minimal requirements for POC test
+
+# Core deps
+fastapi
+uvicorn
+python-dotenv
+pydantic>=2.0
+pydantic-settings
+
+# AI/ML - Music Generation
+torch
+torchaudio
+transformers
+accelerate
+sentencepiece
+
+# Music Processing - CORE
+music21
+librosa
+soundfile
+mido
+pretty-midi
+
+# LLM Integration
+ollama
+
+# Basic-pitch alternative: we'll skip it for now and use MIDI directly
+# basic-pitch
+
+# Utilities
+httpx
+tenacity

@@ -1,0 +1,66 @@
+[project]
+name = "musicai-preprocessing"
+version = "0.1.0"
+description = "MusicAI Preprocessing Service - Audio and MIDI tokenization"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = [
+    "-v",
+    "--tb=short",
+    # Coverage
+    "--cov=src",
+    "--cov-report=term-missing",
+    "--cov-report=html:reports/coverage",
+    "--cov-report=xml:reports/coverage.xml",
+    "--cov-report=json:reports/coverage.json",
+    # Allure
+    "--alluredir=reports/allure-results",
+    # HTML report
+    "--html=reports/pytest-report.html",
+    "--self-contained-html",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "audio: tests related to audio processing",
+    "midi: tests related to MIDI processing",
+    "tokenizer: tests related to tokenization",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*_pb2.py",
+    "*_pb2_grpc.py"
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "@abstractmethod",
+    "logger\\.",
+    "pass"
+]
+show_missing = true
+precision = 2
+fail_under = 70
+
+[tool.coverage.html]
+directory = "reports/coverage"
+title = "MusicAI Preprocessing - Coverage Report"
+
+[tool.coverage.json]
+output = "reports/coverage.json"
+pretty_print = true
