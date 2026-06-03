@@ -6,10 +6,13 @@ import { AlphaTabViewer } from './score/AlphaTabViewer'
 import { ScoreViewer } from './score/ScoreViewer'
 import { MapViewer } from './score/MapViewer'
 import { GpMapViewer } from './score/GpMapViewer'
+import SplitView from './layout/SplitView'
 
 export default function MainView() {
   const themes = useChatStore((s) => s.themes)
   const selected = useChatStore((s) => s.selected)
+  const rightConversation = useChatStore((s) => s.rightConversation)
+  const closeChatPanel = useChatStore((s) => s.closeChatPanel)
   const startTheme = useChatStore((s) => s.startTheme)
 
   const activeTheme = useMemo(
@@ -64,29 +67,22 @@ export default function MainView() {
 
   if (selected.type === 'score') {
     const mf = activeTheme?.musicFiles?.find((f) => f.id === selected.fileId)
+    const hasRightChat = !!(rightConversation && rightConversation.themeId === selected.themeId)
 
-    if (mf?.fileType === 'gp' && mf.gpContent) {
-      return (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <AlphaTabViewer
-            content={mf.gpContent}
-            fileName={mf.fileName}
-            trackIndexes={trackIndexes}
-            startMeasure={selected.startMeasure}
-          />
-        </div>
-      )
-    }
-
-    if (mf?.fileType === 'xml' && mf.content) {
-      return (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <ScoreViewer content={mf.content} fileName={mf.fileName} />
-        </div>
-      )
-    }
-
-    return (
+    const scoreContent = mf?.fileType === 'gp' && mf.gpContent ? (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <AlphaTabViewer
+          content={mf.gpContent}
+          fileName={mf.fileName}
+          trackIndexes={trackIndexes}
+          startMeasure={selected.startMeasure}
+        />
+      </div>
+    ) : mf?.fileType === 'xml' && mf.content ? (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <ScoreViewer content={mf.content} fileName={mf.fileName} />
+      </div>
+    ) : (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8 text-muted-foreground">
         <FileMusic className="h-10 w-10 opacity-20" />
         <p className="text-sm">No hay partitura cargada en este tema</p>
@@ -95,35 +91,62 @@ export default function MainView() {
         </p>
       </div>
     )
+
+    if (hasRightChat) {
+      return (
+        <SplitView
+          left={scoreContent}
+          right={
+            <MusicGenerationChat
+              themeId={rightConversation!.themeId}
+              conversationId={rightConversation!.conversationId}
+              onClose={closeChatPanel}
+            />
+          }
+        />
+      )
+    }
+
+    return scoreContent
   }
 
   // ── Map view ───────────────────────────────────────────────────────────────────
 
   if (selected.type === 'map') {
     const mf = activeTheme?.musicFiles?.find((f) => f.id === selected.fileId)
+    const hasRightChat = !!(rightConversation && rightConversation.themeId === selected.themeId)
 
-    if (mf?.fileType === 'gp' && mf.gpContent) {
-      return (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <GpMapViewer content={mf.gpContent} fileName={mf.fileName} />
-        </div>
-      )
-    }
-
-    if (mf?.fileType === 'xml' && mf.content) {
-      return (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <MapViewer content={mf.content} fileName={mf.fileName} />
-        </div>
-      )
-    }
-
-    return (
+    const mapContent = mf?.fileType === 'gp' && mf.gpContent ? (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <GpMapViewer content={mf.gpContent} fileName={mf.fileName} />
+      </div>
+    ) : mf?.fileType === 'xml' && mf.content ? (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <MapViewer content={mf.content} fileName={mf.fileName} />
+      </div>
+    ) : (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center px-8 text-muted-foreground">
         <FileMusic className="h-10 w-10 opacity-20" />
         <p className="text-sm">No hay partitura cargada en este tema</p>
       </div>
     )
+
+    if (hasRightChat) {
+      return (
+        <SplitView
+          left={mapContent}
+          right={
+            <MusicGenerationChat
+              themeId={rightConversation!.themeId}
+              conversationId={rightConversation!.conversationId}
+              onClose={closeChatPanel}
+            />
+          }
+        />
+      )
+    }
+
+    return mapContent
   }
 
   // ── Conversation view ──────────────────────────────────────────────────────────

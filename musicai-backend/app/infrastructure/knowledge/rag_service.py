@@ -1,11 +1,16 @@
 """
-RAG (Retrieval-Augmented Generation) Service for music theory knowledge.
+RAG (Retrieval-Augmented Generation) Service for music knowledge.
 
-Uses ChromaDB for vector storage and semantic search.
+Three ChromaDB collections:
+  - music_theory       : static knowledge base loaded from JSON
+  - music_scores       : analyses of user-uploaded music files
+  - chat_interactions  : past Q&A pairs, indexed for semantic retrieval
 """
-import logging
+import hashlib
 import json
-from typing import List, Dict, Any, Optional
+import logging
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -13,220 +18,326 @@ logger = logging.getLogger(__name__)
 
 class MusicTheoryRAG:
     """
-    RAG system for music theory knowledge.
-    Provides semantic search over music theory concepts.
+    RAG system for music knowledge.
+    Provides semantic search over music theory, uploaded scores, and chat history.
     """
 
     def __init__(self, persist_directory: Optional[str] = None):
-        """
-        Initialize RAG service with ChromaDB.
-
-        Args:
-            persist_directory: Directory to persist the vector database
-        """
         self.persist_directory = persist_directory or "/tmp/musicai_chromadb"
 
         try:
             import chromadb
-            from chromadb.config import Settings
 
-            # Initialize ChromaDB client
-            self.client = chromadb.Client(Settings(
-                persist_directory=self.persist_directory,
-                anonymized_telemetry=False
-            ))
+            self.client = chromadb.PersistentClient(path=self.persist_directory)
 
-            # Get or create collection
             self.collection = self.client.get_or_create_collection(
                 name="music_theory",
-                metadata={"description": "Music theory knowledge base"}
+                metadata={"description": "Music theory knowledge base"},
+            )
+            self.scores_collection = self.client.get_or_create_collection(
+                name="music_scores",
+                metadata={"description": "Uploaded score analyses"},
+            )
+            self.interactions_collection = self.client.get_or_create_collection(
+                name="chat_interactions",
+                metadata={"description": "Chat interaction history"},
             )
 
-            logger.info(f"ChromaDB initialized with {self.collection.count()} documents")
+            logger.info(
+                f"ChromaDB initialized at '{self.persist_directory}' — "
+                f"theory={self.collection.count()}, "
+                f"scores={self.scores_collection.count()}, "
+                f"interactions={self.interactions_collection.count()}"
+            )
 
         except ImportError:
             logger.warning("ChromaDB not installed. RAG features will be disabled.")
             self.client = None
             self.collection = None
+            self.scores_collection = None
+            self.interactions_collection = None
         except Exception as e:
             logger.error(f"Error initializing ChromaDB: {e}")
             self.client = None
             self.collection = None
+            self.scores_collection = None
+            self.interactions_collection = None
+
+    # ─── Availability ──────────────────────────────────────────────────────────
 
     def is_available(self) -> bool:
-        """Check if RAG service is available."""
         return self.collection is not None
 
-    def load_knowledge_base(self, knowledge_file: str) -> None:
-        """
-        Load knowledge base from JSON file.
+    # ─── Static knowledge base ─────────────────────────────────────────────────
 
-        Args:
-            knowledge_file: Path to JSON file with music theory knowledge
-        """
+    def load_knowledge_base(self, knowledge_file: str) -> None:
         if not self.is_available():
             logger.warning("RAG service not available, skipping knowledge base loading")
             return
 
         try:
-            with open(knowledge_file, 'r', encoding='utf-8') as f:
+            with open(knowledge_file, "r", encoding="utf-8") as f:
                 knowledge = json.load(f)
 
-            # Clear existing collection
             if self.collection.count() > 0:
-                logger.info("Clearing existing knowledge base")
-                # ChromaDB doesn't have a clear method, so we recreate the collection
+                logger.info("Clearing existing music_theory knowledge base")
                 self.client.delete_collection("music_theory")
                 self.collection = self.client.create_collection(
                     name="music_theory",
-                    metadata={"description": "Music theory knowledge base"}
+                    metadata={"description": "Music theory knowledge base"},
                 )
 
-            # Add documents to collection
-            documents = []
-            metadatas = []
-            ids = []
+            documents, metadatas, ids = [], [], []
 
             for idx, entry in enumerate(knowledge.get("concepts", [])):
-                # Create searchable text from concept
                 doc_text = f"{entry['title']}\n{entry['description']}\n"
-                if 'examples' in entry:
-                    doc_text += "\nEjemplos: " + ", ".join(entry['examples'])
-                if 'related_concepts' in entry:
-                    doc_text += "\nRelacionado con: " + ", ".join(entry['related_concepts'])
+                if "examples" in entry:
+                    doc_text += "\nEjemplos: " + ", ".join(entry["examples"])
+                if "related_concepts" in entry:
+                    doc_text += "\nRelacionado con: " + ", ".join(entry["related_concepts"])
 
                 documents.append(doc_text)
                 metadatas.append({
-                    "title": entry['title'],
-                    "category": entry.get('category', 'general'),
-                    "difficulty": entry.get('difficulty', 'intermediate')
+                    "title": entry["title"],
+                    "category": entry.get("category", "general"),
+                    "difficulty": entry.get("difficulty", "intermediate"),
                 })
                 ids.append(f"concept_{idx}")
 
-            # Add to collection
-            self.collection.add(
-                documents=documents,
-                metadatas=metadatas,
-                ids=ids
-            )
-
-            logger.info(f"Loaded {len(documents)} concepts into knowledge base")
+            self.collection.add(documents=documents, metadatas=metadatas, ids=ids)
+            logger.info(f"Loaded {len(documents)} concepts into music_theory collection")
 
         except FileNotFoundError:
             logger.warning(f"Knowledge base file not found: {knowledge_file}")
         except Exception as e:
             logger.error(f"Error loading knowledge base: {e}")
 
+    # ─── Score indexing ────────────────────────────────────────────────────────
+
+    def add_score(self, score_analysis) -> None:
+        """Upsert a ScoreAnalysis into the music_scores collection."""
+        if not self.is_available():
+            return
+        try:
+            doc_text = score_analysis.context_summary or score_analysis.build_summary()
+            metadata = {
+                "score_id":       score_analysis.score_id,
+                "file_name":      score_analysis.file_name,
+                "file_type":      score_analysis.file_type,
+                "key":            score_analysis.key or "",
+                "tempo":          score_analysis.tempo or 0,
+                "time_signature": score_analysis.time_signature or "",
+                "created_at":     score_analysis.created_at.isoformat(),
+            }
+            self.scores_collection.upsert(
+                documents=[doc_text],
+                metadatas=[metadata],
+                ids=[score_analysis.score_id],
+            )
+            logger.info(f"Upserted score '{score_analysis.file_name}' ({score_analysis.score_id}) into music_scores")
+        except Exception as e:
+            logger.error(f"Error adding score to RAG: {e}")
+
+    # ─── Interaction indexing ──────────────────────────────────────────────────
+
+    def add_interaction(
+        self,
+        session_id: str,
+        user_msg: str,
+        assistant_response: str,
+        timestamp: Optional[str] = None,
+    ) -> None:
+        """Store a chat Q&A pair in the chat_interactions collection."""
+        if not self.is_available():
+            return
+        try:
+            ts = timestamp or datetime.utcnow().isoformat()
+            raw_id = f"{session_id}::{ts}::{user_msg[:40]}"
+            doc_id = "chat_" + hashlib.sha1(raw_id.encode()).hexdigest()[:16]
+
+            doc_text = f"Usuario: {user_msg}\nAsistente: {assistant_response}"
+            metadata = {
+                "session_id":   session_id,
+                "timestamp":    ts,
+                "user_msg_len": len(user_msg),
+            }
+            self.interactions_collection.add(
+                documents=[doc_text],
+                metadatas=[metadata],
+                ids=[doc_id],
+            )
+            logger.info(f"Stored interaction for session '{session_id}' (id={doc_id})")
+        except Exception as e:
+            logger.error(f"Error adding interaction to RAG: {e}")
+
+    # ─── Search helpers ────────────────────────────────────────────────────────
+
+    def _format_results(self, results) -> List[Dict[str, Any]]:
+        formatted = []
+        if results.get("documents") and results["documents"][0]:
+            for i in range(len(results["documents"][0])):
+                formatted.append({
+                    "content":  results["documents"][0][i],
+                    "metadata": results["metadatas"][0][i],
+                    "distance": results["distances"][0][i] if "distances" in results else None,
+                })
+        return formatted
+
     def search(
         self,
         query: str,
         n_results: int = 3,
-        category: Optional[str] = None
+        category: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """
-        Search for relevant music theory concepts.
-
-        Args:
-            query: Search query
-            n_results: Number of results to return
-            category: Optional category filter (scales, chords, harmony, etc.)
-
-        Returns:
-            List of relevant concepts with metadata
-        """
+        """Semantic search over the music_theory collection."""
         if not self.is_available():
-            logger.warning("RAG service not available")
             return []
-
         try:
-            # Build where clause for filtering
-            where = None
-            if category:
-                where = {"category": category}
-
-            # Perform semantic search
+            count = self.collection.count()
+            if count == 0:
+                return []
+            where = {"category": category} if category else None
             results = self.collection.query(
                 query_texts=[query],
-                n_results=n_results,
-                where=where
+                n_results=min(n_results, count),
+                where=where,
             )
-
-            # Format results
-            formatted_results = []
-            if results['documents'] and len(results['documents']) > 0:
-                for i in range(len(results['documents'][0])):
-                    formatted_results.append({
-                        "content": results['documents'][0][i],
-                        "metadata": results['metadatas'][0][i],
-                        "distance": results['distances'][0][i] if 'distances' in results else None
-                    })
-
-            logger.info(f"Found {len(formatted_results)} results for query: {query[:50]}...")
-            return formatted_results
-
+            formatted = self._format_results(results)
+            logger.info(f"Theory search: {len(formatted)} results for '{query[:50]}'")
+            return formatted
         except Exception as e:
-            logger.error(f"Error searching knowledge base: {e}")
+            logger.error(f"Error searching music_theory: {e}")
             return []
+
+    def search_scores(self, query: str, n_results: int = 2) -> List[Dict[str, Any]]:
+        """Semantic search over uploaded score analyses."""
+        if not self.is_available():
+            return []
+        try:
+            count = self.scores_collection.count()
+            if count == 0:
+                return []
+            results = self.scores_collection.query(
+                query_texts=[query],
+                n_results=min(n_results, count),
+            )
+            return self._format_results(results)
+        except Exception as e:
+            logger.error(f"Error searching music_scores: {e}")
+            return []
+
+    def list_scores(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return all indexed scores (used to build the available-files inventory)."""
+        if not self.is_available():
+            return []
+        try:
+            count = self.scores_collection.count()
+            if count == 0:
+                return []
+            results = self.scores_collection.get(limit=min(limit, count))
+            formatted = []
+            if results.get("documents"):
+                for i, doc in enumerate(results["documents"]):
+                    formatted.append({
+                        "content":  doc,
+                        "metadata": results["metadatas"][i] if results.get("metadatas") else {},
+                    })
+            return formatted
+        except Exception as e:
+            logger.error(f"Error listing music_scores: {e}")
+            return []
+
+    def get_score_by_id(self, score_id: str) -> Optional[str]:
+        """Retrieve a score document from ChromaDB by its score_id (fallback for ephemeral ScoreStore)."""
+        if not self.is_available():
+            return None
+        try:
+            results = self.scores_collection.get(ids=[score_id])
+            if results.get("documents") and results["documents"]:
+                return results["documents"][0]
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching score {score_id} from ChromaDB: {e}")
+            return None
+
+    def search_interactions(
+        self,
+        query: str,
+        n_results: int = 2,
+        session_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Semantic search over past chat interactions."""
+        if not self.is_available():
+            return []
+        try:
+            count = self.interactions_collection.count()
+            if count == 0:
+                return []
+            where = {"session_id": session_id} if session_id else None
+            results = self.interactions_collection.query(
+                query_texts=[query],
+                n_results=min(n_results, count),
+                where=where,
+            )
+            return self._format_results(results)
+        except Exception as e:
+            logger.error(f"Error searching chat_interactions: {e}")
+            return []
+
+    # ─── Aggregated context for LLM prompts ───────────────────────────────────
 
     def get_context_for_query(
         self,
         query: str,
-        n_results: int = 2
+        n_results: int = 2,
+        session_id: Optional[str] = None,
     ) -> str:
         """
-        Get formatted context string for a query.
-        Used to augment LLM prompts with relevant knowledge.
-
-        Args:
-            query: Search query
-            n_results: Number of results to include
-
-        Returns:
-            Formatted context string
+        Build a multi-section context string from all three collections.
+        Existing callers that omit session_id continue to work unchanged.
         """
-        results = self.search(query, n_results=n_results)
+        parts = []
 
-        if not results:
-            return ""
+        # 1. Music theory KB
+        theory = self.search(query, n_results=n_results)
+        if theory:
+            section = ["CONOCIMIENTO RELEVANTE DE TEORÍA MUSICAL:"]
+            for i, r in enumerate(theory, 1):
+                title = r["metadata"].get("title", "Concepto")
+                section.append(f"\n{i}. {title}:\n{r['content']}")
+            parts.append("\n".join(section))
 
-        context_parts = ["CONOCIMIENTO RELEVANTE DE TEORÍA MUSICAL:"]
-        for i, result in enumerate(results, 1):
-            title = result['metadata'].get('title', 'Concepto')
-            content = result['content']
-            context_parts.append(f"\n{i}. {title}:\n{content}")
+        # 2. Uploaded scores
+        scores = self.search_scores(query, n_results=1)
+        if scores:
+            section = ["PARTITURAS ANALIZADAS RELEVANTES:"]
+            for i, r in enumerate(scores, 1):
+                fname = r["metadata"].get("file_name", "Partitura")
+                section.append(f"\n{i}. {fname}:\n{r['content']}")
+            parts.append("\n".join(section))
 
-        return "\n".join(context_parts)
+        # 3. Past interactions
+        interactions = self.search_interactions(query, n_results=1, session_id=session_id)
+        if interactions:
+            section = ["INTERACCIONES PREVIAS RELEVANTES:"]
+            for i, r in enumerate(interactions, 1):
+                section.append(f"\n{i}.\n{r['content']}")
+            parts.append("\n".join(section))
 
-    def add_user_interaction(
-        self,
-        user_query: str,
-        concept: str,
-        was_helpful: bool = True
-    ) -> None:
-        """
-        Add user interaction to improve future searches.
-
-        Args:
-            user_query: User's question
-            concept: Concept that was relevant
-            was_helpful: Whether the concept was helpful
-        """
-        # This could be expanded to learn from user interactions
-        # For now, just log it
-        logger.info(f"User interaction logged: query='{user_query[:50]}', concept='{concept}', helpful={was_helpful}")
+        return "\n\n".join(parts)
 
 
-# Global instance
+# ─── Singleton ────────────────────────────────────────────────────────────────
+
 _rag_service: Optional[MusicTheoryRAG] = None
 
 
 def get_rag_service() -> MusicTheoryRAG:
-    """Get or create the global RAG service instance."""
     global _rag_service
     if _rag_service is None:
-        _rag_service = MusicTheoryRAG()
+        from app.config import settings
+        _rag_service = MusicTheoryRAG(persist_directory=settings.chroma_persist_directory)
 
-        # Load knowledge base if it exists
         kb_path = Path(__file__).parent / "music_theory_kb.json"
         if kb_path.exists():
             _rag_service.load_knowledge_base(str(kb_path))

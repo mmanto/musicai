@@ -143,7 +143,7 @@ export function OllamaPanel() {
   }, [input, streaming, messages])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       send()
     }
@@ -246,7 +246,7 @@ export function OllamaPanel() {
               </button>
             </div>
             <p className="text-[10px] text-muted-foreground text-center mt-1">
-              Ctrl+Enter para enviar
+              Enter para enviar · Shift+Enter nueva línea
             </p>
           </div>
         </aside>

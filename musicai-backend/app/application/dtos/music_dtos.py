@@ -251,6 +251,7 @@ class ChatRequest(BaseModel):
         description="Previous conversation messages for context"
     )
     session_id: Optional[str] = Field(None, description="Session ID for context tracking")
+    score_id: Optional[str] = Field(None, description="Score ID for uploaded file context")
 
     class Config:
         json_schema_extra = {

@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Plus, Trash2, MessageSquare, ChevronDown, ChevronRight, ChevronLeft,
   FolderOpen, FileMusic, X, PanelLeftOpen, Settings, LogOut, User,
-  Map, Hash, Music2,
+  Map, Hash, Music2, Loader2, Link2, AlertCircle,
 } from 'lucide-react'
 // ChevronRight is used inside the themes list (expand/collapse) — keep it
 import { useChatStore } from '../../store/chat-store'
 import type { GpSection, GpTrack } from '../../types/chat'
+import { uploadScore } from '../../services/api'
 
 // ── GP parsing helpers (ported from music-ui/ConversationSidebar) ──────────────
 
@@ -44,7 +45,9 @@ function buildScoreData(score: any): { sections: GpSection[]; tracks: GpTrack[] 
   return { sections, tracks }
 }
 
-async function parseGpFile(content: ArrayBuffer): Promise<{ sections: GpSection[]; tracks: GpTrack[] }> {
+async function parseGpFile(
+  content: ArrayBuffer
+): Promise<{ sections: GpSection[]; tracks: GpTrack[]; midiBytes: Uint8Array | null }> {
   const mountEl = document.createElement('div')
   mountEl.style.cssText = 'position:absolute;left:-9999px;top:0;width:600px;height:400px;overflow:hidden;visibility:hidden'
   document.body.appendChild(mountEl)
@@ -53,30 +56,123 @@ async function parseGpFile(content: ArrayBuffer): Promise<{ sections: GpSection[
     return await new Promise((resolve) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let api: any = null
+      let scoreMeta: { sections: GpSection[]; tracks: GpTrack[] } | null = null
+      let midiBytes: Uint8Array | null = null
+      let midiDone = false
+
+      function tryResolve() {
+        if (scoreMeta && midiDone) {
+          resolve({ ...scoreMeta, midiBytes })
+          try { api?.destroy() } catch { /* noop */ }
+        }
+      }
+
+      // Fallback: resolve after 5s even if midiLoad never fires
+      const fallbackTimer = setTimeout(() => {
+        if (scoreMeta) resolve({ ...scoreMeta, midiBytes })
+        else resolve({ sections: [], tracks: [], midiBytes: null })
+        try { api?.destroy() } catch { /* noop */ }
+      }, 5000)
+
       try {
         api = new alphaTab.AlphaTabApi(mountEl, {
           core: { fontDirectory: '/alphatab/font/' },
-          player: { enablePlayer: false },
+          // enablePlayer: true so midiLoad fires (no audio output without a sound font)
+          player: { enablePlayer: true, soundFont: '' },
         })
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        api.midiLoad.on((midiFile: any) => {
+          try { midiBytes = midiFile.toBinary() } catch { /* noop */ }
+          midiDone = true
+          clearTimeout(fallbackTimer)
+          tryResolve()
+        })
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         api.scoreLoaded.on((score: any) => {
-          try { resolve(buildScoreData(score)) } catch { resolve({ sections: [], tracks: [] }) }
-          try { api?.destroy() } catch { /* noop */ }
+          try { scoreMeta = buildScoreData(score) } catch { scoreMeta = { sections: [], tracks: [] } }
+          tryResolve()
         })
+
         api.error.on(() => {
+          clearTimeout(fallbackTimer)
           try { api?.destroy() } catch { /* noop */ }
-          resolve({ sections: [], tracks: [] })
+          resolve({ sections: [], tracks: [], midiBytes: null })
         })
+
         api.load(content)
       } catch {
+        clearTimeout(fallbackTimer)
         try { api?.destroy() } catch { /* noop */ }
-        resolve({ sections: [], tracks: [] })
+        resolve({ sections: [], tracks: [], midiBytes: null })
       }
     })
   } catch {
-    return { sections: [], tracks: [] }
+    return { sections: [], tracks: [], midiBytes: null }
   } finally {
     document.body.removeChild(mountEl)
+  }
+}
+
+// ── Score upload helpers ────────────────────────────────────────────────────────
+
+type UploadCallbacks = {
+  updateScoreId: (scoreId: string) => void
+  updateStatus: (status: 'pending' | 'done' | 'error') => void
+}
+
+async function uploadXmlScore(
+  fileName: string,
+  xmlContent: string,
+  cb: UploadCallbacks
+) {
+  cb.updateStatus('pending')
+  try {
+    const blob = new Blob([xmlContent], { type: 'application/xml' })
+    const result = await uploadScore(blob, fileName, 'xml')
+    cb.updateScoreId(result.score_id)
+    cb.updateStatus('done')
+  } catch (err) {
+    console.warn('[LeftSidebar] XML score upload failed (non-blocking):', err)
+    cb.updateStatus('error')
+  }
+}
+
+async function uploadGpScore(
+  fileName: string,
+  midiBytes: Uint8Array | null,
+  sections: GpSection[],
+  tracks: GpTrack[],
+  cb: UploadCallbacks,
+  gpFallbackBuffer?: ArrayBuffer,
+) {
+  cb.updateStatus('pending')
+  try {
+    let blob: Blob
+    let uploadName: string
+
+    if (midiBytes && midiBytes.length > 0) {
+      // Preferred path: AlphaTab extracted MIDI → full music21 analysis
+      blob = new Blob([midiBytes], { type: 'audio/midi' })
+      uploadName = fileName.replace(/\.[^.]+$/, '.mid')
+    } else if (gpFallbackBuffer && gpFallbackBuffer.byteLength > 0) {
+      // Fallback: send the original GP file so the backend parses it natively
+      blob = new Blob([gpFallbackBuffer], { type: 'application/octet-stream' })
+      uploadName = fileName          // keep original .gp5/.gp4/etc. extension
+    } else {
+      throw new Error('No usable data for upload (no MIDI and no GP bytes)')
+    }
+
+    const result = await uploadScore(blob, uploadName, 'gp', {
+      tracksJson: JSON.stringify(tracks),
+      sectionsJson: JSON.stringify(sections),
+    })
+    cb.updateScoreId(result.score_id)
+    cb.updateStatus('done')
+  } catch (err) {
+    console.warn('[LeftSidebar] GP score upload failed (non-blocking):', err)
+    cb.updateStatus('error')
   }
 }
 
@@ -90,12 +186,15 @@ interface LeftSidebarProps {
 export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
   const themes = useChatStore((s) => s.themes)
   const selected = useChatStore((s) => s.selected)
+  const rightConversation = useChatStore((s) => s.rightConversation)
   const startTheme = useChatStore((s) => s.startTheme)
   const renameTheme = useChatStore((s) => s.renameTheme)
   const addMusicFile = useChatStore((s) => s.addMusicFile)
   const removeMusicFile = useChatStore((s) => s.removeMusicFile)
   const setMusicFileSections = useChatStore((s) => s.setMusicFileSections)
   const setMusicFileTracks = useChatStore((s) => s.setMusicFileTracks)
+  const updateMusicFileScoreId = useChatStore((s) => s.updateMusicFileScoreId)
+  const updateMusicFileUploadStatus = useChatStore((s) => s.updateMusicFileUploadStatus)
   const addConversationToTheme = useChatStore((s) => s.addConversationToTheme)
   const selectConversation = useChatStore((s) => s.selectConversation)
   const selectScore = useChatStore((s) => s.selectScore)
@@ -163,19 +262,28 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
           content: null, gpContent: buffer, gpSections: null, gpTracks: null,
         })
         selectScore(themeId, fileId)
-        parseGpFile(buffer.slice(0)).then(({ sections, tracks }) => {
+        parseGpFile(buffer.slice(0)).then(({ sections, tracks, midiBytes }) => {
           if (sections.length > 0) setMusicFileSections(themeId, fileId, sections)
           if (tracks.length > 0) setMusicFileTracks(themeId, fileId, tracks)
+          uploadGpScore(file.name, midiBytes, sections, tracks, {
+            updateScoreId: (id) => updateMusicFileScoreId(themeId, fileId, id),
+            updateStatus: (s) => updateMusicFileUploadStatus(themeId, fileId, s),
+          }, buffer)
         })
       }
       reader.readAsArrayBuffer(file)
     } else {
       reader.onload = (ev) => {
+        const xmlContent = ev.target?.result as string
         const fileId = addMusicFile(themeId, {
           fileName: file.name, fileType: 'xml',
-          content: ev.target?.result as string, gpContent: null, gpSections: null, gpTracks: null,
+          content: xmlContent, gpContent: null, gpSections: null, gpTracks: null,
         })
         selectScore(themeId, fileId)
+        uploadXmlScore(file.name, xmlContent, {
+          updateScoreId: (id) => updateMusicFileScoreId(themeId, fileId, id),
+          updateStatus: (s) => updateMusicFileUploadStatus(themeId, fileId, s),
+        })
       }
       reader.readAsText(file)
     }
@@ -194,6 +302,9 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
 
   const convActive = (convId: string) =>
     selected?.type === 'conversation' && selected.conversationId === convId
+
+  const convInPanel = (convId: string) =>
+    rightConversation?.conversationId === convId
 
   // ── Minimized strip ───────────────────────────────────────────────────────────
 
@@ -364,6 +475,16 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
                       >
                         <FileMusic className={`h-3 w-3 shrink-0 ${scoreActive(mf.id) ? 'text-primary' : 'text-primary/60'}`} />
                         <span className="flex-1 text-[0.65rem] font-mono truncate">{mf.fileName}</span>
+                        {/* Score upload status indicator */}
+                        {mf.scoreUploadStatus === 'pending' && (
+                          <Loader2 className="h-3 w-3 shrink-0 text-muted-foreground animate-spin" title="Vinculando al chat..." />
+                        )}
+                        {mf.scoreUploadStatus === 'done' && (
+                          <Link2 className="h-3 w-3 shrink-0 text-green-500" title="Partitura vinculada al chat" />
+                        )}
+                        {mf.scoreUploadStatus === 'error' && (
+                          <AlertCircle className="h-3 w-3 shrink-0 text-amber-500" title="No se pudo vincular al backend" />
+                        )}
                         <div className="flex items-center gap-0.5 opacity-0 group-hover/file:opacity-100 transition-opacity">
                           <button
                             onClick={(e) => { e.stopPropagation(); selectMap(theme.id, mf.id) }}
@@ -440,26 +561,37 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
               {/* Conversations */}
               {isOpen && (
                 <div className="ml-4 flex flex-col gap-0.5">
-                  {theme.conversations.map((conv) => (
-                    <div
-                      key={conv.id}
-                      className={`group flex items-center gap-1 rounded-md pl-2 pr-1 py-1.5 cursor-pointer transition-colors ${
-                        convActive(conv.id)
-                          ? 'bg-secondary text-secondary-foreground'
-                          : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'
-                      }`}
-                      onClick={() => selectConversation(theme.id, conv.id)}
-                    >
-                      <MessageSquare className="h-3 w-3 shrink-0 opacity-60" />
-                      <span className="flex-1 text-xs truncate">{conv.title}</span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); deleteConversation(theme.id, conv.id) }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:text-destructive transition-opacity"
+                  {theme.conversations.map((conv) => {
+                    const isActive = convActive(conv.id)
+                    const isInPanel = convInPanel(conv.id)
+                    return (
+                      <div
+                        key={conv.id}
+                        className={`group flex items-center gap-1 rounded-md pl-2 pr-1 py-1.5 cursor-pointer transition-colors ${
+                          isActive
+                            ? 'bg-secondary text-secondary-foreground'
+                            : isInPanel
+                            ? 'bg-primary/8 text-foreground border border-primary/20'
+                            : 'hover:bg-secondary/50 text-muted-foreground hover:text-foreground'
+                        }`}
+                        onClick={() => selectConversation(theme.id, conv.id)}
                       >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
+                        <MessageSquare className={`h-3 w-3 shrink-0 ${isInPanel && !isActive ? 'text-primary/60' : 'opacity-60'}`} />
+                        <span className="flex-1 text-xs truncate">{conv.title}</span>
+                        {isInPanel && !isActive && (
+                          <span title="Abierto en panel derecho">
+                            <PanelLeftOpen className="h-3 w-3 shrink-0 text-primary/50" />
+                          </span>
+                        )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteConversation(theme.id, conv.id) }}
+                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:text-destructive transition-opacity"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>

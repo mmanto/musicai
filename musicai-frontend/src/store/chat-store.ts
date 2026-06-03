@@ -1,6 +1,37 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
 import type { Message, Conversation, Theme, ChatStatus, MusicFile, GpSection, GpTrack } from '../types/chat'
+
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf)
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
+function base64ToArrayBuffer(b64: string): ArrayBuffer {
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes.buffer
+}
+
+// Serializes ArrayBuffer → tagged object so JSON.stringify can handle it,
+// and revives it back on load.
+const persistStorage = createJSONStorage(() => localStorage, {
+  replacer: (_key, value) => {
+    if (value instanceof ArrayBuffer) {
+      return { __ab__: arrayBufferToBase64(value) }
+    }
+    return value
+  },
+  reviver: (_key, value) => {
+    if (value && typeof value === 'object' && '__ab__' in (value as object)) {
+      return base64ToArrayBuffer((value as { __ab__: string }).__ab__)
+    }
+    return value
+  },
+})
 
 export type SelectedView =
   | { type: 'conversation'; themeId: string; conversationId: string }
@@ -8,9 +39,15 @@ export type SelectedView =
   | { type: 'map'; themeId: string; fileId: string }
   | null
 
+export interface RightConversation {
+  themeId: string
+  conversationId: string
+}
+
 interface ChatStore {
   themes: Theme[]
   selected: SelectedView
+  rightConversation: RightConversation | null
   streamingContent: string
   status: ChatStatus
   error: string | null
@@ -26,9 +63,13 @@ interface ChatStore {
   removeMusicFile: (themeId: string, fileId: string) => void
   setMusicFileSections: (themeId: string, fileId: string, sections: GpSection[]) => void
   setMusicFileTracks: (themeId: string, fileId: string, tracks: GpTrack[]) => void
+  updateMusicFileScoreId: (themeId: string, fileId: string, scoreId: string) => void
+  updateMusicFileUploadStatus: (themeId: string, fileId: string, status: 'pending' | 'done' | 'error') => void
 
   addConversationToTheme: (themeId: string) => void
   selectConversation: (themeId: string, conversationId: string) => void
+  setRightConversation: (conv: RightConversation | null) => void
+  closeChatPanel: () => void
   selectScore: (themeId: string, fileId: string, trackIndex?: number, startMeasure?: number) => void
   selectMap: (themeId: string, fileId: string) => void
   deleteConversation: (themeId: string, conversationId: string) => void
@@ -63,6 +104,7 @@ export const useChatStore = create<ChatStore>()(
     (set, get) => ({
       themes: [],
       selected: null,
+      rightConversation: null,
       streamingContent: '',
       status: 'idle',
       error: null,
@@ -101,7 +143,8 @@ export const useChatStore = create<ChatStore>()(
             if (first) return { type: 'conversation', themeId: first.id, conversationId: first.conversations[0].id }
             return null
           })()
-          return { themes, selected: gone ? fallback : s.selected }
+          const rcGone = s.rightConversation?.themeId === themeId
+          return { themes, selected: gone ? fallback : s.selected, rightConversation: rcGone ? null : s.rightConversation }
         })
       },
 
@@ -161,21 +204,86 @@ export const useChatStore = create<ChatStore>()(
         }))
       },
 
-      addConversationToTheme: (themeId) => {
-        const conv = newConversation()
+      updateMusicFileScoreId: (themeId, fileId, scoreId) => {
         set((s) => ({
           themes: s.themes.map((t) =>
-            t.id !== themeId ? t : { ...t, conversations: [conv, ...t.conversations] }
+            t.id !== themeId ? t : {
+              ...t,
+              musicFiles: (t.musicFiles ?? []).map((f) =>
+                f.id !== fileId ? f : { ...f, scoreId }
+              ),
+            }
           ),
-          selected: { type: 'conversation', themeId, conversationId: conv.id },
-          streamingContent: '',
-          status: 'idle',
-          error: null,
         }))
       },
 
+      updateMusicFileUploadStatus: (themeId, fileId, status) => {
+        set((s) => ({
+          themes: s.themes.map((t) =>
+            t.id !== themeId ? t : {
+              ...t,
+              musicFiles: (t.musicFiles ?? []).map((f) =>
+                f.id !== fileId ? f : { ...f, scoreUploadStatus: status }
+              ),
+            }
+          ),
+        }))
+      },
+
+      addConversationToTheme: (themeId) => {
+        const conv = newConversation()
+        set((s) => {
+          const sel = s.selected
+          const sameThemeScoreOrMap =
+            sel && (sel.type === 'score' || sel.type === 'map') && sel.themeId === themeId
+          if (sameThemeScoreOrMap) {
+            return {
+              themes: s.themes.map((t) =>
+                t.id !== themeId ? t : { ...t, conversations: [conv, ...t.conversations] }
+              ),
+              rightConversation: { themeId, conversationId: conv.id },
+              streamingContent: '',
+              status: 'idle' as ChatStatus,
+              error: null,
+            }
+          }
+          return {
+            themes: s.themes.map((t) =>
+              t.id !== themeId ? t : { ...t, conversations: [conv, ...t.conversations] }
+            ),
+            selected: { type: 'conversation' as const, themeId, conversationId: conv.id },
+            streamingContent: '',
+            status: 'idle' as ChatStatus,
+            error: null,
+          }
+        })
+      },
+
       selectConversation: (themeId, conversationId) => {
-        set({ selected: { type: 'conversation', themeId, conversationId }, streamingContent: '', status: 'idle', error: null })
+        set((s) => {
+          const sel = s.selected
+          const sameThemeScoreOrMap =
+            sel && (sel.type === 'score' || sel.type === 'map') && sel.themeId === themeId
+          if (sameThemeScoreOrMap) {
+            return { rightConversation: { themeId, conversationId }, streamingContent: '', status: 'idle' as ChatStatus, error: null }
+          }
+          return { selected: { type: 'conversation' as const, themeId, conversationId }, rightConversation: null, streamingContent: '', status: 'idle' as ChatStatus, error: null }
+        })
+      },
+
+      setRightConversation: (conv) => set({ rightConversation: conv }),
+
+      closeChatPanel: () => {
+        set((s) => {
+          const rc = s.rightConversation
+          if (!rc) return {}
+          // If no score/map is currently selected, restore conversation as full-screen
+          const sel = s.selected
+          if (!sel || sel.type === 'conversation') {
+            return { rightConversation: null, selected: { type: 'conversation' as const, themeId: rc.themeId, conversationId: rc.conversationId } }
+          }
+          return { rightConversation: null }
+        })
       },
 
       selectScore: (themeId, fileId, trackIndex, startMeasure) => {
@@ -193,6 +301,7 @@ export const useChatStore = create<ChatStore>()(
             return { ...t, conversations: t.conversations.filter((c) => c.id !== conversationId) }
           })
           const gone = s.selected?.type === 'conversation' && s.selected.conversationId === conversationId
+          const rcGone = s.rightConversation?.conversationId === conversationId && s.rightConversation?.themeId === themeId
           const theme = themes.find((t) => t.id === themeId)
           const fallback: SelectedView = (() => {
             if (theme?.conversations[0]) return { type: 'conversation', themeId, conversationId: theme.conversations[0].id }
@@ -200,7 +309,7 @@ export const useChatStore = create<ChatStore>()(
             if (other) return { type: 'conversation', themeId: other.id, conversationId: other.conversations[0].id }
             return null
           })()
-          return { themes, selected: gone ? fallback : s.selected }
+          return { themes, selected: gone ? fallback : s.selected, rightConversation: rcGone ? null : s.rightConversation }
         })
       },
 
@@ -256,16 +365,17 @@ export const useChatStore = create<ChatStore>()(
     }),
     {
       name: 'musicai-chat',
+      storage: persistStorage,
       partialize: (s) => ({
         themes: s.themes.map((t) => ({
           ...t,
           musicFiles: (t.musicFiles ?? []).map((f) => ({
             ...f,
-            content: null,
-            gpContent: null,
+            gpContent: null, // never persist binary GP data to localStorage (quota risk)
           })),
         })),
         selected: s.selected,
+        rightConversation: s.rightConversation,
       }),
     }
   )

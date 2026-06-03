@@ -591,11 +591,72 @@ Si no hay solicitud EXPLÍCITA de visualización, devuelve un array vacío: []""
             logger.error(f"Error extracting music concepts: {e}")
             return []
 
+    def _build_teacher_system_prompt(self, has_score: bool = False) -> str:
+        """Build the base system prompt for the music teacher chat methods."""
+        score_rules = ""
+        if has_score:
+            score_rules = (
+                "\n\nREGLAS CUANDO HAY PARTITURAS CARGADAS (OBLIGATORIAS):\n"
+                "- Si el usuario pregunta qué archivos, partituras, canciones o Guitar Pro files tienes disponibles → "
+                "lista ÚNICAMENTE los archivos del bloque ARCHIVOS DISPONIBLES. NUNCA menciones archivos que no estén allí.\n"
+                "- Si el usuario pregunta sobre la tonalidad, tempo, acordes, estructura o contenido de una pieza → "
+                "usa EXCLUSIVAMENTE el análisis del bloque ARCHIVOS DISPONIBLES. No completes con conocimiento general del artista.\n"
+                "- Si no encuentras la información en los archivos disponibles, dilo explícitamente: "
+                "'No tengo ese dato en el análisis de la partitura cargada.'"
+            )
+        return (
+            "Eres un asistente de música con acceso a partituras analizadas. Tu objetivo es:\n\n"
+            "1. Explicar conceptos musicales de forma clara y concisa\n"
+            "2. Usar analogías y ejemplos cuando sea apropiado\n"
+            "3. Mantener un tono educativo pero accesible\n"
+            "4. Responder en español\n"
+            "5. Si mencionas escalas, acordes o patrones específicos, ser preciso con la terminología\n"
+            "6. VALIDAR afirmaciones del usuario - analizar si son correctas o incorrectas\n"
+            "7. CORREGIR errores de forma pedagógica, explicando el concepto correcto"
+            f"{score_rules}\n\n"
+            "Directrices generales:\n"
+            "- Sé conciso pero completo (2-4 párrafos)\n"
+            "- Usa términos técnicos pero explícalos\n"
+            "- Si comparas conceptos, hazlo de forma estructurada\n"
+            "- Menciona aplicaciones prácticas cuando sea relevante\n"
+            "- Si el usuario hace una afirmación incorrecta, corrígela gentilmente y explica por qué\n"
+            "- Si el usuario tiene razón, confirma y amplía el concepto\n"
+            "- NO uses emojis excesivamente. Máximo 1-2 por respuesta\n"
+            "- NO uses tags especiales de ningún tipo para marcar elementos musicales\n"
+            "- Escribe la respuesta como texto plano sin etiquetas ni markup especial\n"
+            "- NUNCA uses caracteres chinos, japoneses ni ningún otro idioma que no sea español"
+        )
+
+    def _build_scores_block(self, available_scores: List[Dict]) -> str:
+        """Build the ARCHIVOS DISPONIBLES block from a list of score dicts."""
+        lines = ["ARCHIVOS DISPONIBLES EN EL SISTEMA:"]
+        for entry in available_scores:
+            meta = entry.get("metadata", {})
+            name = meta.get("file_name") or "Archivo sin nombre"
+            key = meta.get("key", "")
+            tempo = meta.get("tempo", "")
+            time_sig = meta.get("time_signature", "")
+            details = ", ".join(filter(None, [
+                f"Tonalidad: {key}" if key else "",
+                f"Tempo: {tempo} BPM" if tempo else "",
+                f"Compás: {time_sig}" if time_sig else "",
+            ]))
+            lines.append(f"  • {name}" + (f" ({details})" if details else ""))
+            # Also include the full analysis summary as detail
+            content = entry.get("content", "")
+            if content:
+                for line in content.splitlines():
+                    lines.append(f"    {line}")
+        return "\n".join(lines)
+
     def chat_music_teacher(
         self,
         message: str,
         conversation_history: Optional[List[Dict[str, str]]] = None,
-        context_summary: Optional[str] = None
+        context_summary: Optional[str] = None,
+        session_id: Optional[str] = None,
+        score_context: Optional[str] = None,
+        available_scores: Optional[List[Dict]] = None,
     ) -> str:
         """
         Chat as a music theory teacher with contextual awareness and RAG.
@@ -603,48 +664,34 @@ Si no hay solicitud EXPLÍCITA de visualización, devuelve un array vacío: []""
         Args:
             message: User question/message
             conversation_history: Previous conversation
-            context_summary: Summary of musical context (what was shown previously)
+            context_summary: Conversation context (patterns shown, concepts referenced)
+            session_id: Session ID for scoped RAG search
+            score_context: Analysis of the score currently open in the viewer
+            available_scores: All indexed scores from RAG (for file-listing questions)
 
         Returns:
             Educational response about music theory
         """
         try:
-            system_prompt = """Eres un profesor de teoría musical experto y amigable. Tu objetivo es:
+            has_scores = bool(score_context or available_scores)
+            system_prompt = self._build_teacher_system_prompt(has_score=has_scores)
 
-1. Explicar conceptos musicales de forma clara y concisa
-2. Usar analogías y ejemplos cuando sea apropiado
-3. Mantener un tono educativo pero accesible
-4. Responder en español
-5. Si mencionas escalas, acordes o patrones específicos, ser preciso con la terminología
-6. VALIDAR afirmaciones del usuario - analizar si son correctas o incorrectas
-7. CORREGIR errores de forma pedagógica, explicando el concepto correcto
-8. Usar el contexto de lo que se mostró previamente para entender referencias como "esa escala"
+            # Embed available files inventory directly in the system prompt
+            if available_scores:
+                system_prompt += f"\n\n{self._build_scores_block(available_scores)}"
+            elif score_context:
+                system_prompt += f"\n\nARCHIVOS DISPONIBLES EN EL SISTEMA:\n  • (partitura activa)\n{score_context}"
 
-Directrices:
-- Sé conciso pero completo (2-4 párrafos)
-- Usa términos técnicos pero explícalos
-- Si comparas conceptos, hazlo de forma estructurada
-- Menciona aplicaciones prácticas cuando sea relevante
-- Si el usuario hace una afirmación incorrecta, corrígela gentilmente y explica por qué
-- Si el usuario tiene razón, confirma y amplía el concepto
-
-Ejemplos de validación:
-Usuario: "La escala pentatónica de la menor debe comenzar con do"
-Respuesta: "En realidad, la escala pentatónica de La menor comienza con LA, su tónica. Las notas son: LA - DO - RE - MI - SOL. La tónica es el punto de reposo y le da nombre a la escala. Quizás estabas pensando en la escala de Do mayor, que sí comienza con Do."
-
-Usuario: "Esa escala debe comenzar con la tónica en la"
-Respuesta (si última escala fue A pentatonic minor): "¡Correcto! La escala pentatónica de La menor comienza con su tónica LA. Las notas son: LA - DO - RE - MI - SOL. La tónica siempre es la primera nota de la escala y le da el nombre a toda la escala."
-
-NO uses emojis excesivamente. Máximo 1-2 por respuesta."""
-
-            # Add RAG context if available
+            # Add RAG context if available (theory KB + uploaded scores + past interactions)
             if self.rag_service and self.rag_service.is_available():
-                rag_context = self.rag_service.get_context_for_query(message, n_results=2)
+                rag_context = self.rag_service.get_context_for_query(
+                    message, n_results=2, session_id=session_id
+                )
                 if rag_context:
                     system_prompt += f"\n\n{rag_context}\n\nUsa este conocimiento para enriquecer tu respuesta si es relevante."
                     logger.info("Added RAG context to prompt")
 
-            # Add conversation context if available
+            # Add conversation context if available (patterns shown, concept history)
             if context_summary:
                 system_prompt += f"\n\nCONTEXTO MUSICAL ACTUAL:\n{context_summary}\n\nUsa este contexto para entender referencias del usuario como 'esa escala', 'el acorde anterior', etc."
 
@@ -657,7 +704,8 @@ NO uses emojis excesivamente. Máximo 1-2 por respuesta."""
 
             response = self.client.chat(
                 model=self.model,
-                messages=messages
+                messages=messages,
+                options={"think": False},
             )
 
             reply = response['message']['content']
@@ -672,7 +720,10 @@ NO uses emojis excesivamente. Máximo 1-2 por respuesta."""
         self,
         message: str,
         conversation_history: Optional[List[Dict[str, str]]] = None,
-        context_summary: Optional[str] = None
+        context_summary: Optional[str] = None,
+        session_id: Optional[str] = None,
+        score_context: Optional[str] = None,
+        available_scores: Optional[List[Dict]] = None,
     ):
         """
         Stream chat as a music theory teacher (yields tokens as they're generated).
@@ -680,33 +731,29 @@ NO uses emojis excesivamente. Máximo 1-2 por respuesta."""
         Args:
             message: User question/message
             conversation_history: Previous conversation
-            context_summary: Summary of musical context
+            context_summary: Conversation context (patterns shown, concept history)
+            session_id: Session ID for scoped RAG search
+            score_context: Analysis of the score currently open in the viewer
+            available_scores: All indexed scores from RAG (for file-listing questions)
 
         Yields:
             String tokens as they're generated
         """
         try:
-            system_prompt = """Eres un profesor de teoría musical experto y amigable. Tu objetivo es:
+            has_scores = bool(score_context or available_scores)
+            system_prompt = self._build_teacher_system_prompt(has_score=has_scores)
 
-1. Explicar conceptos musicales de forma clara y concisa
-2. Usar analogías y ejemplos cuando sea apropiado
-3. Mantener un tono educativo pero accesible
-4. Responder en español
-5. Si mencionas escalas, acordes o patrones específicos, ser preciso con la terminología
-6. VALIDAR afirmaciones del usuario - analizar si son correctas o incorrectas
-7. CORREGIR errores de forma pedagógica, explicando el concepto correcto
+            # Embed available files inventory directly in the system prompt
+            if available_scores:
+                system_prompt += f"\n\n{self._build_scores_block(available_scores)}"
+            elif score_context:
+                system_prompt += f"\n\nARCHIVOS DISPONIBLES EN EL SISTEMA:\n  • (partitura activa)\n{score_context}"
 
-Directrices:
-- Sé conciso pero completo (2-4 párrafos)
-- Usa términos técnicos pero explícalos
-- NO uses emojis excesivamente. Máximo 1-2 por respuesta
-- NO uses tags especiales de ningún tipo para marcar elementos musicales
-- Escribe la respuesta como texto plano sin etiquetas ni markup especial
-- NUNCA uses caracteres chinos, japoneses ni ningún otro idioma que no sea español"""
-
-            # Add RAG context if available
+            # Add RAG context if available (theory KB + uploaded scores + past interactions)
             if self.rag_service and self.rag_service.is_available():
-                rag_context = self.rag_service.get_context_for_query(message, n_results=2)
+                rag_context = self.rag_service.get_context_for_query(
+                    message, n_results=2, session_id=session_id
+                )
                 if rag_context:
                     system_prompt += f"\n\n{rag_context}\n\nUsa este conocimiento para enriquecer tu respuesta si es relevante."
 
@@ -721,20 +768,23 @@ Directrices:
 
             messages.append({"role": "user", "content": message})
 
-            # Use streaming
+            # Use streaming; disable thinking mode for Qwen3 models to avoid long delays
             logger.info("Starting Ollama streaming...")
             stream = self.client.chat(
                 model=self.model,
                 messages=messages,
-                stream=True
+                stream=True,
+                options={"think": False},
             )
 
             token_count = 0
             for chunk in stream:
                 if 'message' in chunk and 'content' in chunk['message']:
-                    token_count += 1
                     token = chunk['message']['content']
-                    if token_count <= 5:  # Log first 5 tokens for debugging
+                    if not token:  # skip empty tokens (e.g. Qwen3 thinking phase)
+                        continue
+                    token_count += 1
+                    if token_count <= 5:
                         logger.info(f"Ollama token {token_count}: '{token[:20]}...'")
                     yield token
 

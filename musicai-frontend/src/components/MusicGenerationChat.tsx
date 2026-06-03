@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Send, Music2, User } from 'lucide-react';
+import { Send, Music2, User, X } from 'lucide-react';
 import {
   generateMusic,
   generatePattern,
@@ -52,20 +52,27 @@ const GREETING: Message = {
   timestamp: 0,
 };
 
-export default function MusicGenerationChat() {
-  const selected = useChatStore((s) => s.selected)!;
-  const themeId = selected.themeId;
-  const conversationId =
-    selected.type === 'conversation' ? selected.conversationId : '';
+interface Props {
+  themeId?: string
+  conversationId?: string
+  onClose?: () => void
+}
+
+// Stable empty array to avoid new reference on every render in Zustand selectors
+const EMPTY_MESSAGES: Message[] = [];
+
+export default function MusicGenerationChat({ themeId: propThemeId, conversationId: propConversationId, onClose }: Props = {}) {
+  const selected = useChatStore((s) => s.selected);
+  const themeId = propThemeId ?? selected?.themeId ?? '';
+  const conversationId = propConversationId ?? (selected?.type === 'conversation' ? selected.conversationId : '');
 
   const storedMessages = useChatStore((s) => {
-    if (!s.selected || s.selected.type !== 'conversation') return [];
-    const theme = s.themes.find((t) => t.id === s.selected!.themeId);
-    return (
-      theme?.conversations.find(
-        (c) => c.id === (s.selected as { conversationId: string }).conversationId
-      )?.messages ?? []
-    );
+    // Use prop values when in panel mode (avoids relying on selected.type)
+    const tid = propThemeId ?? (s.selected?.themeId ?? '');
+    const cid = propConversationId ?? (s.selected?.type === 'conversation' ? s.selected.conversationId : '');
+    if (!tid || !cid) return EMPTY_MESSAGES;
+    const theme = s.themes.find((t) => t.id === tid);
+    return theme?.conversations.find((c) => c.id === cid)?.messages ?? EMPTY_MESSAGES;
   });
 
   const streamingContent = useChatStore((s) => s.streamingContent);
@@ -75,6 +82,23 @@ export default function MusicGenerationChat() {
 
   // Use conversation ID as backend session ID
   const sessionId = conversationId;
+
+  // Derive the active score_id: prefer currently viewed score file, fallback to last uploaded
+  const activeScoreId = useChatStore((s) => {
+    // When in panel mode the main view is the score — use it directly
+    const tid = propThemeId ?? s.selected?.themeId;
+    const theme = s.themes.find((t) => t.id === tid);
+    if (!theme) return null;
+    const files = theme.musicFiles ?? [];
+    if (s.selected?.type === 'score' && s.selected.themeId === tid) {
+      const viewed = files.find((f) => f.id === (s.selected as { fileId: string }).fileId);
+      if (viewed?.scoreId) return viewed.scoreId;
+    }
+    for (let i = files.length - 1; i >= 0; i--) {
+      if (files[i].scoreId) return files[i].scoreId;
+    }
+    return null;
+  });
 
   // Messages displayed = greeting (if empty) + stored + live streaming
   const messages: Message[] =
@@ -285,6 +309,7 @@ export default function MusicGenerationChat() {
             content: m.content,
           })),
         session_id: sessionId,
+        score_id: activeScoreId ?? undefined,
       };
       const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
       for await (const chunk of chatWithTeacherStream(request)) {
@@ -418,6 +443,23 @@ export default function MusicGenerationChat() {
 
   return (
     <div className="flex flex-col h-full bg-background">
+      {/* Panel header — only shown in split-view mode */}
+      {onClose && (
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+            <Music2 size={12} />
+            Chat
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded hover:bg-secondary transition-colors"
+            title="Cerrar panel de chat"
+          >
+            <X size={14} className="text-muted-foreground" />
+          </button>
+        </div>
+      )}
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="max-w-3xl mx-auto flex flex-col gap-6">
@@ -451,15 +493,11 @@ export default function MusicGenerationChat() {
                 <div className="flex-1 min-w-0">
                   {msg.isHybrid && msg.explanationText ? (
                     <>
-                      <div className="text-sm text-foreground leading-relaxed">
-                        <MusicAwareText text={msg.explanationText} />
-                      </div>
+                      <MusicAwareText text={msg.explanationText} markdown />
                       {msg.musicxmlUrl && <hr className="border-border my-4" />}
                     </>
                   ) : (
-                    <div className="text-sm text-foreground leading-relaxed">
-                      <MusicAwareText text={msg.content} />
-                    </div>
+                    <MusicAwareText text={msg.content} markdown />
                   )}
 
                   {msg.showSheetMusic && msg.musicxmlUrl && (
@@ -525,9 +563,9 @@ export default function MusicGenerationChat() {
               <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center shrink-0 mt-0.5">
                 <Music2 size={14} className="text-secondary-foreground" />
               </div>
-              <div className="flex-1 min-w-0 text-sm text-foreground leading-relaxed">
+              <div className="flex-1 min-w-0">
                 {streamingContent ? (
-                  <MusicAwareText text={streamingContent} />
+                  <MusicAwareText text={streamingContent} markdown />
                 ) : (
                   <div className="flex items-center gap-1.5 py-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '0ms' }} />

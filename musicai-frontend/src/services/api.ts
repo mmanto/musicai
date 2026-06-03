@@ -165,6 +165,13 @@ export interface ChatRequest {
   message: string;
   conversation_history?: ChatMessage[];
   session_id?: string;
+  score_id?: string;
+}
+
+export interface ScoreUploadResponse {
+  score_id: string;
+  analysis: Record<string, unknown>;
+  context_summary: string;
 }
 
 export interface PatternData {
@@ -457,5 +464,41 @@ export async function* chatWithTeacherStream(
     }
   }
 }
+
+/**
+ * Upload a music score file to the backend for analysis.
+ * Returns a score_id that can be passed in chat requests.
+ */
+export const uploadScore = async (
+  file: Blob,
+  fileName: string,
+  fileType: 'xml' | 'gp',
+  options?: { tracksJson?: string; sectionsJson?: string }
+): Promise<ScoreUploadResponse> => {
+  const formData = new FormData();
+  formData.append('file', file, fileName);
+  formData.append('file_name', fileName);
+  formData.append('file_type', fileType);
+  if (options?.tracksJson) formData.append('tracks_json', options.tracksJson);
+  if (options?.sectionsJson) formData.append('sections_json', options.sectionsJson);
+
+  const response = await apiClient.post('/music/score/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000,
+    // Accept both 200 (full analysis) and 206 (metadata only)
+    validateStatus: (s) => s === 200 || s === 206,
+  });
+  return response.data;
+};
+
+/**
+ * Link a score to a session so the backend can look up context by session_id.
+ */
+export const linkScoreToSession = async (
+  sessionId: string,
+  scoreId: string
+): Promise<void> => {
+  await apiClient.post('/music/score/link-session', { session_id: sessionId, score_id: scoreId });
+};
 
 export default apiClient;

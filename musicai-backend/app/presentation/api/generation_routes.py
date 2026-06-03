@@ -40,6 +40,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/music", tags=["generation"])
 
+
+def _store_interaction(session_id: str, user_msg: str, response_text: str) -> None:
+    """Fire-and-forget RAG storage for a completed chat turn. Never raises."""
+    try:
+        from app.infrastructure.knowledge.rag_service import get_rag_service
+        get_rag_service().add_interaction(session_id, user_msg, response_text)
+    except Exception as e:
+        logger.warning(f"RAG interaction storage failed (non-fatal): {e}")
+
 # In-memory job storage (will be replaced by Redis/database)
 jobs_storage: Dict[str, dict] = {}
 
@@ -530,7 +539,28 @@ async def chat_endpoint(
         # NEW: Get or create conversation context (use session_id from frontend or generate one)
         session_id = request.session_id if request.session_id else 'default_session'
         context: ConversationContext = context_store.get_or_create(session_id)
-        context_summary = context.get_context_summary()
+        conv_summary = context.get_context_summary()
+
+        # Build conversation context (patterns/concepts shown previously)
+        context_summary = conv_summary if conv_summary != "No hay contexto previo." else None
+
+        # Build score context — authoritative source for questions about the loaded piece
+        from app.domain.models.score_store import score_store as _score_store
+        from app.infrastructure.knowledge.rag_service import get_rag_service as _get_rag
+        _score_data = _score_store.get(request.score_id) if request.score_id else None
+        if not _score_data:
+            _score_data = _score_store.get_by_session(session_id)
+        score_context = None
+        if _score_data:
+            score_context = _score_data.context_summary
+            logger.info(f"Injecting score context for '{_score_data.file_name}' into chat")
+        elif request.score_id:
+            score_context = _get_rag().get_score_by_id(request.score_id)
+            if score_context:
+                logger.info(f"Recovered score {request.score_id} from ChromaDB (ScoreStore was empty)")
+
+        # All available scores — for answering "what files do you have?" questions
+        available_scores = _get_rag().list_scores()
 
         logger.info(f"Using session_id: {session_id}")
 
@@ -554,16 +584,14 @@ async def chat_endpoint(
                 # Validator succeeded
                 logger.info(f"Validator result: valid={is_valid}")
 
-                # Generate response with validator explanation
                 response_text = explanation
 
-                # Mark concept as explained
                 if last_concept.concept_type == "scale":
                     context.mark_concept_explained(f"escala {last_concept.scale_type}")
 
-                # Save context
                 context_store.save(context)
 
+                _store_interaction(session_id, request.message, response_text)
                 return ChatResponse(
                     type="text",
                     content=response_text,
@@ -601,6 +629,7 @@ async def chat_endpoint(
                 message=request.message,
                 conversation_history=request.conversation_history
             )
+            _store_interaction(session_id, request.message, response_text)
             return ChatResponse(
                 type="text",
                 content=response_text,
@@ -612,7 +641,10 @@ async def chat_endpoint(
             response_text = ollama.chat_music_teacher(
                 message=request.message,
                 conversation_history=request.conversation_history,
-                context_summary=context_summary if context_summary != "No hay contexto previo." else None
+                context_summary=context_summary,
+                session_id=session_id,
+                score_context=score_context,
+                available_scores=available_scores or None,
             )
 
             # Step 4: Extract music concepts for visualization from the USER's original message
@@ -621,6 +653,7 @@ async def chat_endpoint(
 
             if not concepts:
                 # No visualization needed - pure text response
+                _store_interaction(session_id, request.message, response_text)
                 return ChatResponse(
                     type="text",
                     content=response_text,
@@ -648,6 +681,7 @@ async def chat_endpoint(
 
             if not patterns_to_generate:
                 # Concepts found but couldn't generate patterns
+                _store_interaction(session_id, request.message, response_text)
                 return ChatResponse(
                     type="text",
                     content=response_text,
@@ -760,6 +794,7 @@ async def chat_endpoint(
                 logger.info(f"Saved concept to context: {concept_to_save.description}")
 
                 # Return hybrid response
+                _store_interaction(session_id, request.message, response_text)
                 return ChatResponse(
                     type="hybrid",
                     content=response_text,
@@ -770,6 +805,7 @@ async def chat_endpoint(
             except Exception as gen_error:
                 logger.error(f"Error generating pattern: {gen_error}", exc_info=True)
                 # Fall back to text-only response
+                _store_interaction(session_id, request.message, response_text)
                 return ChatResponse(
                     type="text",
                     content=response_text,
@@ -986,12 +1022,70 @@ async def chat_stream_endpoint(
 
             session_id = request.session_id if request.session_id else 'default_session'
             context: ConversationContext = context_store.get_or_create(session_id)
-            context_summary = context.get_context_summary()
+            conv_summary = context.get_context_summary()
+
+            # Conversation context (patterns/concepts shown previously)
+            context_summary = conv_summary if conv_summary != "No hay contexto previo." else None
+
+            # ── Build file context ─────────────────────────────────────────────
+            from app.domain.models.score_store import score_store as _score_store
+            from app.infrastructure.knowledge.rag_service import get_rag_service as _get_rag
+
+            logger.info(f"[stream] session={session_id} score_id={request.score_id!r}")
+
+            # 1. Active score: from ScoreStore (primary, in-memory) or ChromaDB (fallback)
+            score_analysis = None
+            if request.score_id:
+                score_analysis = _score_store.get(request.score_id)
+            if not score_analysis:
+                score_analysis = _score_store.get_by_session(session_id)
+            stream_score_context = None
+            if score_analysis:
+                stream_score_context = score_analysis.context_summary
+                logger.info(f"[stream] score context from ScoreStore: '{score_analysis.file_name}'")
+            elif request.score_id:
+                stream_score_context = _get_rag().get_score_by_id(request.score_id)
+                if stream_score_context:
+                    logger.info(f"[stream] score context recovered from ChromaDB: {request.score_id}")
+
+            # 2. All available scores: ScoreStore first (reliable), then merge with ChromaDB
+            in_memory_scores = _score_store.list_all()
+            in_memory_as_dicts = [
+                {
+                    "content": s.context_summary,
+                    "metadata": {
+                        "score_id": s.score_id,
+                        "file_name": s.file_name,
+                        "file_type": s.file_type,
+                        "key": s.key or "",
+                        "tempo": s.tempo or 0,
+                        "time_signature": s.time_signature or "",
+                    },
+                }
+                for s in in_memory_scores
+            ]
+            # Supplement with ChromaDB entries not already in ScoreStore
+            try:
+                chroma_scores = _get_rag().list_scores()
+                known_ids = {s.score_id for s in in_memory_scores}
+                extra = [c for c in chroma_scores if c["metadata"].get("score_id") not in known_ids]
+                all_available_scores = in_memory_as_dicts + extra
+            except Exception:
+                all_available_scores = in_memory_as_dicts
+
+            logger.info(
+                f"[stream] available_scores={len(all_available_scores)} "
+                f"(memory={len(in_memory_as_dicts)}) "
+                f"score_context={'yes' if stream_score_context else 'no'}"
+            )
 
             for token in ollama.chat_music_teacher_stream(
                 message=request.message,
                 conversation_history=request.conversation_history,
-                context_summary=context_summary if context_summary != "No hay contexto previo." else None
+                context_summary=context_summary,
+                session_id=session_id,
+                score_context=stream_score_context,
+                available_scores=all_available_scores or None,
             ):
                 # Use thread-safe way to put into asyncio queue
                 loop.call_soon_threadsafe(token_queue.put_nowait, ('token', token))
@@ -1026,6 +1120,12 @@ async def chat_stream_endpoint(
                 elif msg_type == 'done':
                     yield f"data: {json.dumps({'done': True, 'full_response': full_response})}\n\n"
                     logger.info("Streaming chat completed")
+                    # Store interaction in RAG without blocking the SSE response
+                    import asyncio as _asyncio
+                    _session_id = request.session_id if request.session_id else 'default_session'
+                    _asyncio.get_event_loop().run_in_executor(
+                        None, _store_interaction, _session_id, request.message, full_response
+                    )
                     break
                 elif msg_type == 'error':
                     yield f"data: {json.dumps({'error': data})}\n\n"

@@ -384,6 +384,8 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL}
       # ChromaDB persistence
       CHROMA_PERSIST_DIRECTORY: /app/chromadb_data
+      # Redirect XDG cache to the writable chromadb volume (fixes ONNX permission error)
+      XDG_CACHE_HOME: /app/chromadb_data/cache
       # Application settings
       PYTHONUNBUFFERED: "1"
       LOG_LEVEL: info
@@ -400,7 +402,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 120s
     restart: unless-stopped
     networks:
       - musicai-network
@@ -423,7 +425,12 @@ services:
       VITE_REASONING_API_URL: ${VITE_REASONING_API_URL}
       # Enable reasoning service
       VITE_USE_REASONING_SERVICE: "${VITE_USE_REASONING_SERVICE}"
+      # Ollama (host machine, accessible via host.docker.internal)
+      VITE_OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      VITE_OLLAMA_MODEL: ${OLLAMA_MODEL}
       NODE_ENV: development
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # Hot reload for development
       - ./musicai-frontend/src:/app/src

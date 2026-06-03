@@ -73,23 +73,63 @@ class Music21Service:
             logger.error(f"Error loading MIDI file: {e}")
             raise ValueError(f"Could not load MIDI file: {e}")
 
+    def from_gp_bytes(self, gp_bytes: bytes, file_ext: str = '.gp5') -> stream.Stream:
+        """
+        Parse Guitar Pro file bytes (GP3/GP4/GP5) to Stream.
+        Writes to a temp file because music21's GP converter requires a file path.
+        """
+        import tempfile, os
+        ext = file_ext if file_ext.startswith('.') else f'.{file_ext}'
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                tmp.write(gp_bytes)
+                tmp_path = tmp.name
+            score = converter.parse(tmp_path)
+            logger.info(f"Parsed GP file ({ext}): {len(score.flatten().notes)} notes")
+            return score
+        except Exception as e:
+            logger.error(f"Error parsing GP file: {e}")
+            raise ValueError(f"Could not parse Guitar Pro file: {e}")
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
     def from_musicxml(self, musicxml_str: str) -> stream.Stream:
         """
-        Parse MusicXML string to Stream.
+        Parse MusicXML string to Stream via a temp file.
 
-        Args:
-            musicxml_str: MusicXML as string
-
-        Returns:
-            music21.stream.Stream object
+        Writing to disk avoids music21 misinterpreting the raw string as a
+        file path, and sidesteps DOCTYPE/DTD network-fetch issues that cause
+        silent parse failures or timeouts.
         """
+        import tempfile, os, re
+
+        # Strip external DOCTYPE declaration to prevent network DTD fetch
+        clean_xml = re.sub(
+            r'<!DOCTYPE\s+\S+\s+(?:PUBLIC|SYSTEM)[^>]*>',
+            '',
+            musicxml_str,
+            flags=re.IGNORECASE | re.DOTALL,
+        ).strip()
+
+        tmp_path = None
         try:
-            score = converter.parse(musicxml_str, format='musicxml')
-            logger.info("Converted MusicXML to Stream")
+            with tempfile.NamedTemporaryFile(
+                suffix='.musicxml', delete=False, mode='w', encoding='utf-8'
+            ) as tmp:
+                tmp.write(clean_xml)
+                tmp_path = tmp.name
+
+            score = converter.parse(tmp_path)
+            logger.info(f"Parsed MusicXML via temp file: {len(score.flatten().notes)} notes")
             return score
         except Exception as e:
             logger.error(f"Error parsing MusicXML: {e}")
             raise ValueError(f"Invalid MusicXML: {e}")
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
     def from_abc(self, abc_str: str) -> stream.Stream:
         """
@@ -693,6 +733,45 @@ class Music21Service:
         except Exception as e:
             logger.error(f"Error creating arpeggio: {e}")
             raise ValueError(f"Could not create arpeggio: {e}")
+
+    def extract_score_metadata(self, score: stream.Stream) -> Dict[str, Any]:
+        """
+        Extract human-readable metadata from a parsed Stream:
+        title, composer, instrument/part names, and measure count.
+        Useful for enriching the context summary sent to the LLM.
+        """
+        meta: Dict[str, Any] = {}
+
+        # Title and composer from metadata block
+        if score.metadata:
+            if score.metadata.title:
+                meta['title'] = str(score.metadata.title)
+            if score.metadata.composer:
+                meta['composer'] = str(score.metadata.composer)
+
+        # Part / instrument names
+        try:
+            parts = score.parts if hasattr(score, 'parts') else []
+            instrument_names = []
+            for part in parts:
+                instr = part.getInstrument(returnDefault=True)
+                name = getattr(instr, 'instrumentName', None) or getattr(part, 'partName', None)
+                if name:
+                    instrument_names.append(str(name))
+            if instrument_names:
+                meta['instruments'] = instrument_names
+        except Exception:
+            pass
+
+        # Measure count
+        try:
+            measures = score.parts[0].getElementsByClass('Measure') if score.parts else []
+            if measures:
+                meta['measure_count'] = len(measures)
+        except Exception:
+            pass
+
+        return meta
 
     # ==================== UTILITY METHODS ====================
 

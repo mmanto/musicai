@@ -41,6 +41,8 @@ export interface MusicFile {
   gpContent: ArrayBuffer | null
   gpSections: GpSection[] | null
   gpTracks: GpTrack[] | null
+  scoreId?: string
+  scoreUploadStatus?: 'pending' | 'done' | 'error'
 }
 
 export interface Theme {
