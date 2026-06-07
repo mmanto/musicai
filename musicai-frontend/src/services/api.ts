@@ -501,4 +501,56 @@ export const linkScoreToSession = async (
   await apiClient.post('/music/score/link-session', { session_id: sessionId, score_id: scoreId });
 };
 
+// ==================== Knowledge Base API ====================
+
+export interface KnowledgeDocument {
+  id: string;
+  title: string;
+  category: string;
+  difficulty: string;
+  source_type: string;
+  added_at: string | null;
+  content_preview: string;
+}
+
+export interface KnowledgeListResponse {
+  documents: KnowledgeDocument[];
+  total: number;
+}
+
+export const listKnowledgeDocuments = async (): Promise<KnowledgeListResponse> => {
+  const response = await apiClient.get('/knowledge/documents');
+  return response.data;
+};
+
+export const addKnowledgeDocument = async (data: {
+  title: string;
+  content: string;
+  category: string;
+  difficulty: string;
+}): Promise<{ doc_id: string; status: string }> => {
+  const response = await apiClient.post('/knowledge/documents', data);
+  return response.data;
+};
+
+export const uploadKnowledgeDocument = async (
+  file: File,
+  meta: { title?: string; category: string; difficulty: string }
+): Promise<{ doc_id: string; status: string; chars: number; title: string }> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (meta.title) formData.append('title', meta.title);
+  formData.append('category', meta.category);
+  formData.append('difficulty', meta.difficulty);
+  const response = await apiClient.post('/knowledge/documents/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 30000,
+  });
+  return response.data;
+};
+
+export const deleteKnowledgeDocument = async (docId: string): Promise<void> => {
+  await apiClient.delete(`/knowledge/documents/${docId}`);
+};
+
 export default apiClient;

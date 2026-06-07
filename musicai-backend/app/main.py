@@ -111,11 +111,12 @@ async def health():
 
 
 # Import and include routers
-from app.presentation.api import generation_routes, analysis_routes, score_routes
+from app.presentation.api import generation_routes, analysis_routes, score_routes, knowledge_routes
 
 app.include_router(generation_routes.router, prefix=settings.api_v1_prefix)
 app.include_router(analysis_routes.router, prefix=settings.api_v1_prefix)
 app.include_router(score_routes.router, prefix=settings.api_v1_prefix)
+app.include_router(knowledge_routes.router, prefix=settings.api_v1_prefix)
 
 
 if __name__ == "__main__":

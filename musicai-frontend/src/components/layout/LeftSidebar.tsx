@@ -8,6 +8,8 @@ import {
 import { useChatStore } from '../../store/chat-store'
 import type { GpSection, GpTrack } from '../../types/chat'
 import { uploadScore } from '../../services/api'
+import SettingsModal from '../settings/SettingsModal'
+import { saveGpContent, deleteGpContent } from '../../lib/gpContentDb'
 
 // ── GP parsing helpers (ported from music-ui/ConversationSidebar) ──────────────
 
@@ -203,9 +205,11 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
   const deleteConversation = useChatStore((s) => s.deleteConversation)
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const [editingThemeId, setEditingThemeId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [addMenuThemeId, setAddMenuThemeId] = useState<string | null>(null)
   const [addMenuPos, setAddMenuPos] = useState<{ top: number; left: number } | null>(null)
 
@@ -223,6 +227,10 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
 
   function toggleTheme(themeId: string) {
     setCollapsed((prev) => ({ ...prev, [themeId]: !prev[themeId] }))
+  }
+
+  function toggleGroup(key: string) {
+    setCollapsedGroups((prev) => ({ ...prev, [key]: !prev[key] }))
   }
 
   function startEditing(themeId: string, currentTitle: string) {
@@ -261,6 +269,7 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
           fileName: file.name, fileType: 'gp',
           content: null, gpContent: buffer, gpSections: null, gpTracks: null,
         })
+        saveGpContent(fileId, buffer).catch(() => { /* best-effort */ })
         selectScore(themeId, fileId)
         parseGpFile(buffer.slice(0)).then(({ sections, tracks, midiBytes }) => {
           if (sections.length > 0) setMusicFileSections(themeId, fileId, sections)
@@ -494,7 +503,11 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
                             <Map className="h-3 w-3" />
                           </button>
                           <button
-                            onClick={(e) => { e.stopPropagation(); removeMusicFile(theme.id, mf.id) }}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (mf.fileType === 'gp') deleteGpContent(mf.id).catch(() => { /* best-effort */ })
+                              removeMusicFile(theme.id, mf.id)
+                            }}
                             className="p-0.5 rounded hover:text-destructive"
                             title="Quitar partitura"
                           >
@@ -503,54 +516,83 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
                         </div>
                       </div>
 
-                      {/* GP sections */}
+                      {/* Secciones */}
                       {mf.fileType === 'gp' && mf.gpSections && mf.gpSections.length > 0 && (
-                        <div className="ml-3 flex flex-col gap-0.5 mb-0.5">
-                          {mf.gpSections.map((sec, i) => {
-                            const currentTrack = selected?.type === 'score' && selected.fileId === mf.id
-                              ? (selected as { trackIndex?: number }).trackIndex
-                              : undefined
-                            return (
-                              <button
-                                key={i}
-                                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-left hover:bg-secondary/50 transition-colors group/sec"
-                                onClick={() => selectScore(theme.id, mf.id, currentTrack, sec.startMeasure)}
-                                title={`c.${sec.startMeasure}–${sec.endMeasure}`}
-                              >
-                                <Hash className="h-2.5 w-2.5 shrink-0 text-muted-foreground/60" />
-                                <span className="flex-1 text-xs text-muted-foreground group-hover/sec:text-foreground truncate">{sec.label}</span>
-                                <span className="text-[10px] font-mono text-muted-foreground/50 shrink-0">{sec.startMeasure}</span>
-                              </button>
-                            )
-                          })}
+                        <div className="ml-3">
+                          <button
+                            className="w-full flex items-center gap-1 px-2 py-1 text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-md transition-colors"
+                            onClick={() => toggleGroup(`${mf.id}-sections`)}
+                          >
+                            {collapsedGroups[`${mf.id}-sections`]
+                              ? <ChevronRight className="h-2.5 w-2.5 shrink-0" />
+                              : <ChevronDown className="h-2.5 w-2.5 shrink-0" />}
+                            <Hash className="h-2.5 w-2.5 shrink-0" />
+                            <span className="text-xs">Secciones</span>
+                            <span className="ml-auto text-[10px] opacity-40">{mf.gpSections.length}</span>
+                          </button>
+                          {!collapsedGroups[`${mf.id}-sections`] && (
+                            <div className="ml-3 flex flex-col gap-0.5 mb-0.5">
+                              {mf.gpSections.map((sec, i) => {
+                                const currentTrack = selected?.type === 'score' && selected.fileId === mf.id
+                                  ? (selected as { trackIndex?: number }).trackIndex
+                                  : undefined
+                                return (
+                                  <button
+                                    key={i}
+                                    className="flex items-center gap-1.5 rounded-md px-2 py-1 text-left hover:bg-secondary/50 transition-colors group/sec"
+                                    onClick={() => selectScore(theme.id, mf.id, currentTrack, sec.startMeasure)}
+                                    title={`c.${sec.startMeasure}–${sec.endMeasure}`}
+                                  >
+                                    <Hash className="h-2.5 w-2.5 shrink-0 text-muted-foreground/60" />
+                                    <span className="flex-1 text-xs text-muted-foreground group-hover/sec:text-foreground truncate">{sec.label}</span>
+                                    <span className="text-[10px] font-mono text-muted-foreground/50 shrink-0">{sec.startMeasure}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       )}
 
-                      {/* GP tracks */}
+                      {/* Instrumentos */}
                       {mf.fileType === 'gp' && mf.gpTracks && mf.gpTracks.length > 0 && (
-                        <div className="ml-3 flex flex-col gap-0.5 mb-0.5">
-                          <div className="mx-2 my-1 border-t border-border" />
-                          {mf.gpTracks.map((track) => (
-                            <div
-                              key={track.index}
-                              className={`flex items-center gap-1.5 rounded-md px-2 py-1 cursor-pointer transition-colors ${
-                                trackActive(mf.id, track.index)
-                                  ? 'bg-secondary text-secondary-foreground'
-                                  : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
-                              }`}
-                              title={track.name}
-                              onClick={() => {
-                                const currentMeasure = selected?.type === 'score' && selected.fileId === mf.id
-                                  ? (selected as { startMeasure?: number }).startMeasure
-                                  : undefined
-                                selectScore(theme.id, mf.id, track.index, currentMeasure)
-                              }}
-                            >
-                              <Music2 className="h-2.5 w-2.5 shrink-0 text-muted-foreground/60" />
-                              <span className="flex-1 text-xs truncate">{track.name}</span>
-                              <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0">{track.index + 1}</span>
+                        <div className="ml-3">
+                          <button
+                            className="w-full flex items-center gap-1 px-2 py-1 text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-md transition-colors"
+                            onClick={() => toggleGroup(`${mf.id}-instruments`)}
+                          >
+                            {collapsedGroups[`${mf.id}-instruments`]
+                              ? <ChevronRight className="h-2.5 w-2.5 shrink-0" />
+                              : <ChevronDown className="h-2.5 w-2.5 shrink-0" />}
+                            <Music2 className="h-2.5 w-2.5 shrink-0" />
+                            <span className="text-xs">Instrumentos</span>
+                            <span className="ml-auto text-[10px] opacity-40">{mf.gpTracks.length}</span>
+                          </button>
+                          {!collapsedGroups[`${mf.id}-instruments`] && (
+                            <div className="ml-3 flex flex-col gap-0.5 mb-0.5">
+                              {mf.gpTracks.map((track) => (
+                                <div
+                                  key={track.index}
+                                  className={`flex items-center gap-1.5 rounded-md px-2 py-1 cursor-pointer transition-colors ${
+                                    trackActive(mf.id, track.index)
+                                      ? 'bg-secondary text-secondary-foreground'
+                                      : 'text-muted-foreground hover:bg-secondary/50 hover:text-foreground'
+                                  }`}
+                                  title={track.name}
+                                  onClick={() => {
+                                    const currentMeasure = selected?.type === 'score' && selected.fileId === mf.id
+                                      ? (selected as { startMeasure?: number }).startMeasure
+                                      : undefined
+                                    selectScore(theme.id, mf.id, track.index, currentMeasure)
+                                  }}
+                                >
+                                  <Music2 className="h-2.5 w-2.5 shrink-0 text-muted-foreground/60" />
+                                  <span className="flex-1 text-xs truncate">{track.name}</span>
+                                  <span className="text-[10px] font-mono text-muted-foreground/40 shrink-0">{track.index + 1}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
                       )}
                     </div>
@@ -616,7 +658,10 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
 
         {showUserMenu && (
           <div className="absolute bottom-full left-2 right-2 mb-1 bg-card border border-border rounded-md shadow-lg overflow-hidden z-10">
-            <button className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-secondary transition-colors text-left">
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-secondary transition-colors text-left"
+              onClick={() => { setShowSettings(true); setShowUserMenu(false) }}
+            >
               <Settings className="h-3.5 w-3.5" />
               Ajustes
             </button>
@@ -627,6 +672,8 @@ export default function LeftSidebar({ open, onToggle }: LeftSidebarProps) {
             </button>
           </div>
         )}
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       </div>
     </aside>
   )

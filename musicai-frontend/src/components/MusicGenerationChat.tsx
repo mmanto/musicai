@@ -30,6 +30,17 @@ import './InlineNotation.css';
 const USE_REASONING_SERVICE =
   import.meta.env.VITE_USE_REASONING_SERVICE === 'true' || false;
 
+// Derive a short display name from the raw model string, e.g.
+// "qcwind/qwen3-8b-instruct-Q4-K-M:latest" → "qwen3-8b"
+function deriveModelShortName(raw: string | undefined): string {
+  if (!raw) return 'IA'
+  const withoutTag = raw.split(':')[0]
+  const name = withoutTag.split('/').pop() ?? withoutTag
+  return name.replace(/-instruct.*$/i, '').replace(/-chat.*$/i, '')
+}
+
+const MODEL_SHORT_NAME = deriveModelShortName(import.meta.env.VITE_OLLAMA_MODEL as string | undefined)
+
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
@@ -96,6 +107,21 @@ export default function MusicGenerationChat({ themeId: propThemeId, conversation
     }
     for (let i = files.length - 1; i >= 0; i--) {
       if (files[i].scoreId) return files[i].scoreId;
+    }
+    return null;
+  });
+
+  const activeFileName = useChatStore((s) => {
+    const tid = propThemeId ?? s.selected?.themeId;
+    const theme = s.themes.find((t) => t.id === tid);
+    if (!theme) return null;
+    const files = theme.musicFiles ?? [];
+    if (s.selected?.type === 'score' && s.selected.themeId === tid) {
+      const viewed = files.find((f) => f.id === (s.selected as { fileId: string }).fileId);
+      if (viewed) return viewed.fileName;
+    }
+    for (let i = files.length - 1; i >= 0; i--) {
+      if (files[i].scoreId) return files[i].fileName;
     }
     return null;
   });
@@ -445,15 +471,23 @@ export default function MusicGenerationChat({ themeId: propThemeId, conversation
     <div className="flex flex-col h-full bg-background">
       {/* Panel header — only shown in split-view mode */}
       {onClose && (
-        <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-            <Music2 size={12} />
-            Chat
-          </span>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Music2 size={12} className="text-muted-foreground shrink-0" />
+            <span className="text-xs font-semibold text-foreground shrink-0">{MODEL_SHORT_NAME}</span>
+            {activeFileName && (
+              <>
+                <span className="text-muted-foreground/40 shrink-0">·</span>
+                <span className="text-xs text-muted-foreground truncate" title={activeFileName}>
+                  {activeFileName}
+                </span>
+              </>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded hover:bg-secondary transition-colors"
+            className="p-1 rounded hover:bg-secondary transition-colors shrink-0"
             title="Cerrar panel de chat"
           >
             <X size={14} className="text-muted-foreground" />

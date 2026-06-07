@@ -287,11 +287,74 @@ export const useChatStore = create<ChatStore>()(
       },
 
       selectScore: (themeId, fileId, trackIndex, startMeasure) => {
-        set({ selected: { type: 'score', themeId, fileId, trackIndex, startMeasure } })
+        set((s) => {
+          const newSelected = { type: 'score' as const, themeId, fileId, trackIndex, startMeasure }
+
+          // navegación dentro del mismo archivo (secciones/pistas) — no tocar rightConversation
+          const prev = s.selected
+          if (prev?.type === 'score' && prev.themeId === themeId && prev.fileId === fileId) {
+            return { selected: newSelected }
+          }
+
+          // ya hay panel de chat para este tema — mantenerlo
+          if (s.rightConversation?.themeId === themeId) {
+            return { selected: newSelected }
+          }
+
+          // abrir (o crear) conversación en el panel derecho
+          const theme = s.themes.find((t) => t.id === themeId)
+          if (!theme) return { selected: newSelected }
+
+          if (theme.conversations.length > 0) {
+            return {
+              selected: newSelected,
+              rightConversation: { themeId, conversationId: theme.conversations[0].id },
+            }
+          }
+
+          const conv = newConversation()
+          return {
+            themes: s.themes.map((t) =>
+              t.id !== themeId ? t : { ...t, conversations: [conv, ...t.conversations] }
+            ),
+            selected: newSelected,
+            rightConversation: { themeId, conversationId: conv.id },
+          }
+        })
       },
 
       selectMap: (themeId, fileId) => {
-        set({ selected: { type: 'map', themeId, fileId } })
+        set((s) => {
+          const newSelected = { type: 'map' as const, themeId, fileId }
+
+          const prev = s.selected
+          if (prev?.type === 'map' && prev.themeId === themeId && prev.fileId === fileId) {
+            return { selected: newSelected }
+          }
+
+          if (s.rightConversation?.themeId === themeId) {
+            return { selected: newSelected }
+          }
+
+          const theme = s.themes.find((t) => t.id === themeId)
+          if (!theme) return { selected: newSelected }
+
+          if (theme.conversations.length > 0) {
+            return {
+              selected: newSelected,
+              rightConversation: { themeId, conversationId: theme.conversations[0].id },
+            }
+          }
+
+          const conv = newConversation()
+          return {
+            themes: s.themes.map((t) =>
+              t.id !== themeId ? t : { ...t, conversations: [conv, ...t.conversations] }
+            ),
+            selected: newSelected,
+            rightConversation: { themeId, conversationId: conv.id },
+          }
+        })
       },
 
       deleteConversation: (themeId, conversationId) => {

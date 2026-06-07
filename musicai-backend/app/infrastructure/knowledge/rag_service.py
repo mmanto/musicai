@@ -104,13 +104,98 @@ class MusicTheoryRAG:
                 })
                 ids.append(f"concept_{idx}")
 
-            self.collection.add(documents=documents, metadatas=metadatas, ids=ids)
-            logger.info(f"Loaded {len(documents)} concepts into music_theory collection")
+            # Add in small batches so a single network/embedding timeout doesn't
+            # abort the entire load.
+            batch_size = 5
+            loaded = 0
+            for start in range(0, len(documents), batch_size):
+                end = start + batch_size
+                for attempt in range(3):
+                    try:
+                        self.collection.add(
+                            documents=documents[start:end],
+                            metadatas=metadatas[start:end],
+                            ids=ids[start:end],
+                        )
+                        loaded += end - start
+                        break
+                    except Exception as batch_err:
+                        if attempt == 2:
+                            logger.error(f"Batch {start}:{end} failed after 3 attempts: {batch_err}")
+                        else:
+                            logger.warning(f"Batch {start}:{end} attempt {attempt+1} failed, retrying: {batch_err}")
+
+            logger.info(f"Loaded {loaded}/{len(documents)} concepts into music_theory collection")
 
         except FileNotFoundError:
             logger.warning(f"Knowledge base file not found: {knowledge_file}")
         except Exception as e:
             logger.error(f"Error loading knowledge base: {e}")
+
+    # ─── Document CRUD (music_theory collection) ──────────────────────────────
+
+    def list_documents(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """Return all documents in the music_theory collection."""
+        if not self.is_available():
+            return []
+        try:
+            count = self.collection.count()
+            if count == 0:
+                return []
+            results = self.collection.get(
+                limit=min(limit, count),
+                include=["documents", "metadatas"],
+            )
+            formatted = []
+            for i, doc_id in enumerate(results.get("ids") or []):
+                formatted.append({
+                    "id":       doc_id,
+                    "content":  (results.get("documents") or [])[i] if results.get("documents") else "",
+                    "metadata": (results.get("metadatas") or [])[i] if results.get("metadatas") else {},
+                })
+            return formatted
+        except Exception as e:
+            logger.error(f"Error listing music_theory documents: {e}")
+            return []
+
+    def add_document(
+        self,
+        title: str,
+        content: str,
+        category: str = "general",
+        difficulty: str = "intermediate",
+        source_type: str = "manual",
+    ) -> str:
+        """Add a document to the music_theory collection. Returns the document ID."""
+        if not self.is_available():
+            raise RuntimeError("RAG service not available")
+        import uuid
+        doc_id = f"doc_{uuid.uuid4().hex[:12]}"
+        self.collection.add(
+            documents=[content],
+            metadatas=[{
+                "title":       title,
+                "category":    category,
+                "difficulty":  difficulty,
+                "source_type": source_type,
+                "added_at":    datetime.utcnow().isoformat(),
+            }],
+            ids=[doc_id],
+        )
+        logger.info(f"Added knowledge document '{title}' id={doc_id}")
+        return doc_id
+
+    def delete_document(self, doc_id: str) -> bool:
+        """Delete a document from the music_theory collection."""
+        if not self.is_available():
+            return False
+        try:
+            self.collection.delete(ids=[doc_id])
+            logger.info(f"Deleted knowledge document {doc_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting document {doc_id}: {e}")
+            return False
 
     # ─── Score indexing ────────────────────────────────────────────────────────
 
